@@ -15,11 +15,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show all files
+      - name: Extract project
         run: |
-          echo "Содержимое корня репозитория:"
-          ls -la
-          echo "Распаковываем архив:"
           unzip -q fieldmap_v3.zip -d extracted_files
-          echo "Содержимое после распаковки:"
-          find extracted_files -maxdepth 3
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build APK
+        run: |
+          cd extracted_files/fieldmap2
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Copy APK
+        run: |
+          # Находим собранный apk файл и копируем в корень
+          APK_PATH=$(find extracted_files/fieldmap2 -name "app-debug.apk" | head -n 1)
+          cp "$APK_PATH" FieldMap.apk
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest FieldMap.apk \
+            --title "FieldMap" \
+            --notes "Automatic build from GitHub Actions" \
+            --target "${GITHUB_SHA}"
+            
