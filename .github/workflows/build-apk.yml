@@ -15,49 +15,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Extract project
+      - name: Show all files
         run: |
-          unzip -q fieldmap_v3.zip -d .
-          echo "=== Список файлов после распаковки ==="
+          echo "Содержимое корня репозитория:"
           ls -la
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-
-      - name: Build APK
-        run: |
-          # Автоматически находим папку, в которой лежит gradlew
-          PROJECT_DIR=$(find . -name "gradlew" -type f -exec dirname {} \;)
-          echo "Найдена папка проекта: $PROJECT_DIR"
-          
-          cd "$PROJECT_DIR"
-          chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon
-          
-          # Сохраняем путь к проекту в переменную окружения GitHub
-          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
-
-      - name: Copy APK
-        run: |
-          # Копируем готовый APK в корень с именем FieldMap.apk
-          APK_PATH=$(find . -name "app-debug.apk" | head -n 1)
-          echo "Найден APK: $APK_PATH"
-          cp "$APK_PATH" FieldMap.apk
-
-      - name: Publish release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release delete latest --yes --cleanup-tag || true
-          gh release create latest FieldMap.apk \
-            --title "FieldMap" \
-            --notes "build" \
-            --target "${GITHUB_SHA}"
+          echo "Распаковываем архив:"
+          unzip -q fieldmap_v3.zip -d extracted_files
+          echo "Содержимое после распаковки:"
+          find extracted_files -maxdepth 3
