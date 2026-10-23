@@ -1,0 +1,56 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract project
+        run: |
+          unzip -q fieldmap_v3.zip -d .
+          ls -la
+          test -d fieldmap2 || {
+            echo "fieldmap2 directory not found after unzip"
+            find . -maxdepth 3 -type d | head -200
+            exit 1
+          }
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build APK
+        working-directory: fieldmap2
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Copy APK
+        run: cp fieldmap2/app/build/outputs/apk/debug/app-debug.apk FieldMap.apk
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest FieldMap.apk \
+            --title "FieldMap" \
+            --notes "build" \
+            --target "${GITHUB_SHA}"
