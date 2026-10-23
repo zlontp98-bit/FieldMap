@@ -32,14 +32,20 @@ jobs:
 
       - name: Build APK
         run: |
-          cd extracted_files/fieldmap2
+          # Автоматически ищем папку с gradlew внутри распакованных файлов
+          PROJECT_DIR=$(find extracted_files -name "gradlew" -type f -exec dirname {} \;)
+          echo "Найдена папка проекта: $PROJECT_DIR"
+          
+          cd "$PROJECT_DIR"
           chmod +x ./gradlew
           ./gradlew assembleDebug --no-daemon
+          
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
 
       - name: Copy APK
         run: |
-          # Находим собранный apk файл и копируем в корень
-          APK_PATH=$(find extracted_files/fieldmap2 -name "app-debug.apk" | head -n 1)
+          APK_PATH=$(find extracted_files -name "app-debug.apk" | head -n 1)
+          echo "Найден APK: $APK_PATH"
           cp "$APK_PATH" FieldMap.apk
 
       - name: Publish release
@@ -49,6 +55,5 @@ jobs:
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest FieldMap.apk \
             --title "FieldMap" \
-            --notes "Automatic build from GitHub Actions" \
+            --notes "Automatic build" \
             --target "${GITHUB_SHA}"
-            
