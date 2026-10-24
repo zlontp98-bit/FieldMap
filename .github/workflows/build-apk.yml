@@ -3,6 +3,7 @@ name: Build APK
 on:
   workflow_dispatch:
   push:
+    branches: [main]
 
 permissions:
   contents: write
@@ -17,6 +18,7 @@ jobs:
 
       - name: Extract project
         run: |
+          set -euo pipefail
           unzip -q fieldmap_v3.zip -d extracted_files
 
       - name: Setup Java
@@ -32,28 +34,49 @@ jobs:
 
       - name: Build APK
         run: |
-          # Автоматически ищем папку с gradlew внутри распакованных файлов
-          PROJECT_DIR=$(find extracted_files -name "gradlew" -type f -exec dirname {} \;)
-          echo "Найдена папка проекта: $PROJECT_DIR"
-          
-          cd "$PROJECT_DIR"
-          chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon
-          
-          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+          set -euo pipefail
 
-      - name: Copy APK
-        run: |
-          APK_PATH=$(find extracted_files -name "app-debug.apk" | head -n 1)
-          echo "Найден APK: $APK_PATH"
+          PROJECT_SETTINGS=$(find extracted_files -type f \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
+            -print -quit)
+
+          if [ -z "$PROJECT_SETTINGS" ]; then
+            echo "::error::Android project not found"
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$PROJECT_SETTINGS")
+          echo "Project directory: $PROJECT_DIR"
+
+          gradle -p "$PROJECT_DIR" assembleDebug \
+            --no-daemon --stacktrace
+
+          APK_PATH="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+
+          if [ ! -f "$APK_PATH" ]; then
+            echo "::error::APK file not found: $APK_PATH"
+            find "$PROJECT_DIR" -type f -name '*.apk' -print
+            exit 1
+          fi
+
           cp "$APK_PATH" FieldMap.apk
+          ls -lh FieldMap.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FieldMap-APK
+          path: FieldMap.apk
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --yes --cleanup-tag || true
+
           gh release create latest FieldMap.apk \
-            --title "FieldMap" \
-            --notes "Automatic build" \
+            --title "FieldMap APK" \
+            --notes "Automatic debug build from commit ${GITHUB_SHA}" \
             --target "${GITHUB_SHA}"
