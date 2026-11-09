@@ -81,7 +81,7 @@ fieldmap2/
   и вручную `actions_run_trigger` (`run_workflow`, `build-apk.yml`, ref = ветка). ~1–2 минуты, кладёт APK в релиз
   **`latest`** (заменяет предыдущий). Скачать `https://github.com/zlontp98-bit/FieldMap/releases/download/latest/FieldMap.apk`
   через curl, сверить sha256 с digest релиза и отправить файлом (SendUserFile).
-- Перед каждой новой сборкой поднимать `versionCode`/`versionName` в `app/build.gradle` (сейчас 6 / 4.0).
+- Перед каждой новой сборкой поднимать `versionCode`/`versionName` в `app/build.gradle` (сейчас 7 / 4.0.1).
   Подпись — `app/debug.keystore` (одинаковая, ставится поверх; SHA-1 `F9:83:10:43:CB:EF:30:93:34:75:66:59:DD:41:38:EC:96:01:7E:3D`).
 - Сайты Google теперь открыты (dl.google.com, gstatic, firestore): MainActivity проверяется `javac` против
   `android-all` (Maven Central, `org.robolectric:android-all:13-robolectric-9030017`), `androidx.core` 1.12.0,
@@ -100,10 +100,9 @@ fieldmap2/
 ## Состояние на 09.11.2026 — перенос прототипа в APK (4.0) сделан
 
 Сделано всё из плана от 06.11.2026: прототип целиком (кроме ролей и людей), миграция, камера, PDF, фото по запросу,
-вход через Google, участники карты, новые правила. **Ждём от пользователя** (шаги дали в чате и в README):
-включить провайдер Google, добавить Android-приложение с SHA-1, прислать **Web client ID** → вписать в
-`js/firebase-config.js` (`GOOGLE_WEB_CLIENT_ID`), собрать APK. Без него вход не работает, а без входа нет общей карты.
-Потом: пользователь проверяет на тестовой карте, публикует `firestore.rules` (общая карта — только для вошедших
+вход через Google, участники карты, новые правила. Пользователь включил провайдер Google, добавил Android-приложение
+(SHA-1 добавляется уже после регистрации: Project settings → Your apps → Add fingerprint) и прислал Web client ID —
+он вписан в `js/firebase-config.js`, сборка 7 / 4.0.1. Дальше: пользователь проверяет на тестовой карте, публикует `firestore.rules` (общая карта — только для вошедших
 через Google, проверка `'google.com' in request.auth.token.firebase.identities`) и обновляет все телефоны в один день
 (3.x после новых правил не синхронизируется; старый APK при правке маркера выбросил бы новые фото).
 Не проверено на телефоне: вход через Google, камера, «Сохранить»/«Поделиться» файлом, PDF с настоящими тайлами в WebView.
