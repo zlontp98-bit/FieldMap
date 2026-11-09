@@ -285,7 +285,7 @@
   }
   // при запуске, пока не вошли: предложить вход (можно отложить)
   function loginPrompt() {
-    if (!AU || AU.google() || !AU.configured() || !(window.AndroidBridge && window.AndroidBridge.googleSignIn)) return;
+    if (!AU || AU.google() || !AU.configured() || !window.GOOGLE_WEB_CLIENT_ID || !(window.AndroidBridge && window.AndroidBridge.googleSignIn)) return;
     if (pageIsOpen() || !$('sheet').classList.contains('hidden')) return;
     openSheet(
       h('h3', { text: 'Вход через Google' }),

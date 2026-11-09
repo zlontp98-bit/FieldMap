@@ -307,7 +307,8 @@ rep("""  // фото-подложка: приблизительная привя
   // рисуется без поворота (холст поворачивает withMapRotation): при повороте закрываем круг вокруг центра
   function drawGoogle(W, H) {
     const tz = clamp(Math.round(V.z), 0, 20);
-    const k = Math.pow(2, V.z - tz), size = TILE * k, n = Math.pow(2, tz);
+    const k = Math.pow(2, V.z - tz), n = Math.pow(2, tz);
+    const size = TILE * k + (V.rot ? 0.6 : 0);   // при повороте тайлы чуть внахлёст — без светлых швов
     const c = worldPx(V.lat, V.lng, tz);
     const R = V.rot ? Math.hypot(W, H) / 2 : 0, hw = V.rot ? R : W / 2, hh = V.rot ? R : H / 2;
     const x0 = Math.floor((c[0] - hw / k) / TILE), x1 = Math.floor((c[0] + hw / k) / TILE);
