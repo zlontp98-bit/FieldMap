@@ -1,0 +1,20 @@
+const H = require('./harness.cjs');
+(async () => {
+  const url = H.prepareWeb();
+  const browser = await H.launch();
+  const relay = H.makeRelay();
+  const { page } = await H.phone(browser, relay, { init: `if (!sessionStorage.x) { sessionStorage.x = 1; localStorage.setItem('fieldmap_lang', 'it');
+    localStorage.setItem('__stubAuth', JSON.stringify({ uid: 'u1', google: true, name: 'Marco', email: 'm@x.it' }));
+    localStorage.setItem('fieldmap_account', JSON.stringify({ uid: 'u1', google: true, name: 'Marco', email: 'm@x.it', named: true })); }` });
+  await page.goto(url); await H.sleep(1200);
+  await page.click('#btnMenu'); await H.sleep(300);
+  console.log('drawer:', (await page.evaluate(() => document.getElementById('dTop').innerText)).replace(/\n+/g, ' | '));
+  await page.click('text=Mappa condivisa'); await H.sleep(300);
+  console.log('sync:', (await page.evaluate(() => document.getElementById('page').innerText)).replace(/\n+/g, ' | '));
+  await page.click('#pageHead button'); await H.sleep(300);
+  await page.click('text=Vous'.replace('Vous', 'Marco')); await H.sleep(300);
+  console.log('account:', (await page.evaluate(() => document.getElementById('page').innerText)).replace(/\n+/g, ' | '));
+  await page.screenshot({ path: H.SP + '/tests/shots/t5_account_it.png' });
+  console.log('errors', page.errors);
+  await browser.close();
+})().catch((e) => { console.error(e); process.exit(1); });

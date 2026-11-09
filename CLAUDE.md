@@ -1,14 +1,14 @@
 # FieldMap — памятка для новых сессий
 
-Android-приложение для полевой работы (прокладка оптики): общая карта с папками, маркерами, линиями,
+Android-приложение для полевой работы (прокладка оптики): общая карта с объектами (папками), маркерами, линиями,
 слоями кабелей и трубок, бобинами и фото. Пользователь пишет по-русски, отвечать по-русски.
 
 ## Где код
 
 - **Весь проект лежит в архиве `fieldmap_v3.zip`** в корне репозитория (внутри — папка `fieldmap2/`).
-  Отдельных исходников в репозитории нет.
-- Основная ветка — **`main`**, в ней актуальная версия. Изменения делать в своей ветке и вливать
-  в `main` через pull request (по просьбе пользователя).
+- Рядом: `apk-port/` — перенос прототипа в страницу APK (`port.py` + `app_part.js`), `apk-tests/` — проверки страницы APK
+  (Playwright), `proto-tests/` — проверки самого прототипа.
+- Основная ветка — **`main`**. Изменения делать в своей ветке и вливать в `main` через pull request (по просьбе пользователя).
 
 Как менять код:
 1. `unzip -q fieldmap_v3.zip -d <папка в scratchpad>` и править там.
@@ -16,142 +16,107 @@ Android-приложение для полевой работы (проклад�
    `cd <папка> && zip -qrX ../fieldmap_v3.zip fieldmap2`, скопировать в корень репозитория.
 3. Коммит, push в свою ветку, pull request в `main`.
 
-## Устройство приложения
+## Устройство приложения (версия 4.0)
 
 ```
 fieldmap2/
-  app/src/main/java/com/fibra/fieldmapweb/MainActivity.java   WebView-оболочка
+  app/src/main/java/com/fibra/fieldmapweb/MainActivity.java   WebView-оболочка, камера, файлы, вход через Google
   app/src/main/AndroidManifest.xml                            разрешения, FileProvider, приём «Поделиться»
-  app/src/main/assets/web/index.html                          вся карта (одна страница, ~5000 строк JS внутри)
-  app/src/main/assets/web/js/store.js                         сохранение и учёт изменений для синхронизации
-  app/src/main/assets/web/js/sync.js                          общая карта через Firestore
+  app/src/main/assets/web/index.html                          вся карта (~9500 строк; собирается apk-port/port.py)
+  app/src/main/assets/web/js/store.js                         сохранение, фото (IndexedDB), учёт изменений для синхронизации
+  app/src/main/assets/web/js/sync.js                          вход через Google (Auth) и общая карта через Firestore (Sync)
   app/src/main/assets/web/js/kml.js                           импорт/экспорт KML
-  app/src/main/assets/web/js/firebase-config.js               ключи проекта Firebase
+  app/src/main/assets/web/js/firebase-config.js               ключи Firebase и GOOGLE_WEB_CLIENT_ID
   firestore.rules                                             правила Firestore (вставляются в консоли вручную)
   README.md                                                   описание для пользователя
 ```
 
-- **index.html** — это прототип пользователя с claude.ai (артефакт «FieldMap прототип»,
-  https://claude.ai/artifact/GUpDC2p6FmZbZaKoUfHenb), в который встроены: Store/Sync/Kml, GPS,
-  карты Google, «Поделиться», импорт данных, обработка кнопки «Назад». Рисует всё на `<canvas>`
-  своей проекцией Web Mercator (без Leaflet). Строки интерфейса — по-русски, переводы it/en в `DICT`
-  (ключ — русский текст, функция `tr()`).
-- **Данные страницы** — объект `S`: `folders` (с `parentId`), `markers` (`photos` — data:URL),
-  `lines` (`points`, `layers` — слои кабелей/трубок с вложенными массивами), `reels` (бобины),
-  плюс личное для телефона: `activeFolderId`, `view`, `placeColor` и т.п. Сохраняется через
-  `saveData()` → `Store.save()`; ключ localStorage `fieldmap_proto_v1` (не менять — иначе данные
-  пользователей пропадут). Фото хранятся в IndexedDB, в localStorage — ссылки `photo:<id>`.
-- **Синхронизация**: Firestore, документ на объект `maps/{код}/items/{вид}_{id}`, вид — folders,
-  markers, lines, reels, photos. Объект передаётся строкой JSON в поле `json` (Firestore не принимает
-  вложенные массивы). Побеждает более позднее изменение (`updatedAt`, время телефона), удаление —
-  `deleted:true`. Фото — отдельные документы `photos_{id}` (одно фото на документ). Вход анонимный,
-  доступ — по 10-значному коду карты. SDK Firebase 10.14.1 грузится с gstatic.com.
-- **Firebase**: проект `fieldmap-afaf2` (регион europe-west8, бесплатный тариф Spark, база `(default)`),
-  анонимный вход включён, правила из `firestore.rules` опубликованы. В базе есть тестовая карта
-  `BKA2L7HRCD` от проверки — можно игнорировать.
-- **Карта-подложка**: Google схема/спутник (`mt*.google.com/vt/lyrs=m|y`, неофициальный адрес без
-  ключа) и белая CARTO. Фото Бузаллы и сетку пользователь просил **не возвращать**.
-- **AndroidBridge** (MainActivity → JS): `shareFile`, `shareText`, `openMap`, `takeShared`,
-  `requestLocationPermission`. JS → натив: `window.__onBack`, `window.__onLocationPermission`,
-  `window.__onSharedLocation` (точка из «Поделиться»: короткие ссылки maps.app.goo.gl MainActivity
-  разворачивает сама).
-- Страница грузится по адресу `file:///android_asset/web/index.html` — не менять (данные в
-  хранилище WebView привязаны к адресу).
+- **index.html** = прототип пользователя с claude.ai (артефакт «FieldMap прототип», slug `7d5b4188-d90b-43f1-a4ce-3c204990d0c8`,
+  https://claude.ai/artifact/GUpDC2p6FmZbZaKoUfHenb) + то, что нужно приложению. Делается **скриптом**:
+  `python3 apk-port/port.py <прототип index.html> <…/assets/web/index.html>`. Скрипт — список точных замен (каждая проверяет,
+  что кусок найден ровно один раз; если прототип поменялся — падает и показывает, какую замену поправить) и вставка
+  `apk-port/app_part.js` (файлы, страница «Общая карта», аккаунт, участники, присланные точки, `__onBack`, `appStart()`).
+  Прототип читать через Artifact `read_artifact` частями (offset/limit; большие части сохраняются в файл, склеить по `offset`).
+  Руками index.html не править — править port.py/app_part.js и пересобирать, иначе следующий перенос всё сотрёт.
+- Что меняет port.py: заголовок страницы, убирает фото Бузаллы (`bgImg`) — сетка осталась только как запасная подложка для PDF;
+  подключает js/*; данные через Store (`loadData/saveData`, `seed()` пустой); подложка Google схема/спутник (`gTile`, `crossOrigin`)
+  и CARTO, вид карты с поворотом запоминается (`fieldmap_view`); GPS (синяя точка, ◎, `__onLocationPermission`);
+  «Поделиться» маркером (AndroidBridge); `PhotoStore` → Store; `photoSrc` понимает `photo:<id>`; PDF/фото — `giveBlob` через
+  AndroidBridge; меню: «Общая карта», «Участники карты», «Вы: имя»/«Войти через Google»; настройки: импорт/экспорт, аккаунт;
+  `me()` — вошедший аккаунт с правами админа, люди/бригады прототипа скрыты (`initRoles` их чистит); переводы it/en новых строк.
+- **Миграция с 3.x** (`S.apkV4`, при первом запуске): объекту без своего цвета пишется цвет его объекта (в 3.x он так и
+  рисовался), `S.stageV1 = true` до миграций прототипа — ничего не становится проектом. Объекты в синих папках стали
+  синими = «уже существует» (в отчёт не идут) — пользователя предупредили.
+- **Данные** — объект `S`: `folders` (с `parentId`), `markers`, `lines` (`points`, `layers` со слоями кабелей/трубок, `via`),
+  `reels`. Личное для телефона (не синхронизируется): `workMode`, `autoColor`, `log`/`logSnap` (журнал), `reportPlace`,
+  цвета, `view` и т.п. Ключ localStorage `fieldmap_proto_v1` (не менять). У объектов `createdBy`/`updatedBy` = uid (ставит Store).
+- **Фото**: в `photos` у маркера и линии — строка `photo:<id>` (старые и из галереи) или запись снимка камеры
+  `{id, lat, lng, t, by, gps?, acc?}`. Картинки — в IndexedDB `fieldmap`/`photos` по id (Store.photoGet/photoPut);
+  data:URL в данных Store сам переносит в IndexedDB. На сервере — документы `photos_{id}`; **подписка их не получает**,
+  фото скачивается при открытии (`Store.photoGet` → `backend.getPhoto`). Что уже на сервере — `meta.sent[код]`
+  (при обновлении с 3.x все старые фото считаются отправленными).
+- **Синхронизация**: `maps/{код}/items/{вид}_{id}`, объект строкой JSON в поле `json`, побеждает более поздний `updatedAt`,
+  удаление — `deleted:true`. Подписка — `where('kind', 'in', [folders, markers, lines, reels])`.
+  Участники: `maps/{код}/members/{uid}` = `{uid, name, role, joinedAt, seenAt}` (пишется при подключении и смене имени),
+  владелец — `maps/{код}/info/owner` = `{uid}` (создаётся один раз первым вошедшим). Журнал у каждого телефона свой:
+  пришедшие изменения в журнал не пишутся (`onRemoteData` обновляет `logSnap`).
+- **Вход**: только Google. Кнопка → `AndroidBridge.googleSignIn(GOOGLE_WEB_CLIENT_ID)` → Credential Manager → ответ в
+  `window.__onGoogleSignIn({idToken, name, email} | {error})` → `Auth.signIn` → Firebase `linkWithCredential` (если был
+  анонимный uid из 3.x) или `signInWithCredential`. Аккаунт запоминается в localStorage `fieldmap_account`
+  (`{uid, google, name, email, named}`), имя спрашивается один раз. Общая карта без входа не подключается.
+- **Firebase**: проект `fieldmap-afaf2` (europe-west8, тариф Spark). В базе тестовые карты от проверок: `BKA2L7HRCD`,
+  `ZFDWU7PDQE` (09.11.2026) — можно игнорировать.
+- **Карта-подложка**: Google схема/спутник (`mt*.google.com/vt/lyrs=m|y`, без ключа, отдают `access-control-allow-origin: *`)
+  и белая CARTO. Фото Бузаллы и сетку как подложку пользователь просил **не возвращать**.
+- **AndroidBridge** (JS → натив): `shareFile(name, mime, text)`, `shareBinary(name, mime, base64)`, `saveBinary(name, mime, base64)`
+  (системное «Сохранить», ответ в `__onFileSaved(ok)`), `shareText`, `openMap`, `takeShared`, `requestLocationPermission`,
+  `googleSignIn(clientId)`. Натив → JS: `__onBack`, `__onLocationPermission`, `__onSharedLocation`, `__onGoogleSignIn`, `__onFileSaved`.
+  Камера: `<input capture>` → `onShowFileChooser` → `ACTION_IMAGE_CAPTURE` в кэш (FileProvider `photos/`); разрешение CAMERA
+  не объявлено намеренно (тогда приложение камеры снимает без него).
+- Страница грузится по адресу `file:///android_asset/web/index.html` — не менять (данные в хранилище WebView привязаны к адресу).
 
 ## Сборка APK
 
-- В этой среде Android SDK нет и сайты Google закрыты: APK собирает GitHub Actions
-  (`.github/workflows/build-apk.yml`). Запускается сам при каждом push в `main` (в том числе при
-  слиянии pull request) и вручную: `actions_run_trigger` (`run_workflow`, `build-apk.yml`, ref = ветка).
-  Сборка ~1 минута, кладёт APK в релиз **`latest`** (заменяет предыдущий).
-- Пользователь не может скачать APK по ссылке GitHub — после сборки скачать
-  `https://github.com/zlontp98-bit/FieldMap/releases/download/latest/FieldMap.apk` через curl
-  и отправить файлом (SendUserFile). Сверить sha256 с digest релиза.
-- Перед каждой новой сборкой поднимать `versionCode`/`versionName` в `app/build.gradle`
-  (сейчас 5 / 3.2). Подпись — `app/debug.keystore` (одинаковая, ставится поверх).
-- MainActivity можно проверить компиляцией `javac` против `android-all` с Maven Central
-  (`org.robolectric:android-all:13-robolectric-9030017`) и заглушки `androidx.core.content.FileProvider`.
+- Android SDK в этой среде нет; APK собирает GitHub Actions (`.github/workflows/build-apk.yml`): сам при push в `main`
+  и вручную `actions_run_trigger` (`run_workflow`, `build-apk.yml`, ref = ветка). ~1–2 минуты, кладёт APK в релиз
+  **`latest`** (заменяет предыдущий). Скачать `https://github.com/zlontp98-bit/FieldMap/releases/download/latest/FieldMap.apk`
+  через curl, сверить sha256 с digest релиза и отправить файлом (SendUserFile).
+- Перед каждой новой сборкой поднимать `versionCode`/`versionName` в `app/build.gradle` (сейчас 6 / 4.0).
+  Подпись — `app/debug.keystore` (одинаковая, ставится поверх; SHA-1 `F9:83:10:43:CB:EF:30:93:34:75:66:59:DD:41:38:EC:96:01:7E:3D`).
+- Сайты Google теперь открыты (dl.google.com, gstatic, firestore): MainActivity проверяется `javac` против
+  `android-all` (Maven Central, `org.robolectric:android-all:13-robolectric-9030017`), `androidx.core` 1.12.0,
+  `androidx.credentials` 1.3.0 и `googleid` 1.1.1 (classes.jar из AAR с dl.google.com/dl/android/maven2).
 
 ## Как проверять
 
-- Страницу проверять в Chromium через Playwright (`require('playwright')`, установлен), открывая
-  `file://…/index.html`. Сайты Google и CARTO закрыты — их запросы перехватывать (`route`).
-- Синхронизацию двух «телефонов» — двумя контекстами браузера; вместо Firestore можно подставить
-  `window.FIELDMAP_BACKEND_FACTORY` (заглушка-ретранслятор через `exposeFunction`).
-- Настоящий Firebase тоже проверяется: SDK взять из `npm pack firebase@10.14.1` и подставлять вместо
-  gstatic через `route`, браузер запускать с `proxy: { server: process.env.HTTPS_PROXY }` и
-  `ignoreHTTPSErrors`. Пишет в настоящую базу пользователя — только тестовой картой и сказать об этом.
+- `apk-tests/` (Playwright, Chromium): `FM_WEB=<…/assets/web> FM_OUT=<папка> node apk-tests/t2_sync.cjs`.
+  Firestore заменён ретранслятором в Node (`FIELDMAP_BACKEND_FACTORY`), вход Google — заглушкой (`FIELDMAP_AUTH_FACTORY`),
+  AndroidBridge — заглушкой (вызовы в `window.__bridgeCalls`). t1 — запуск и вход, t2 — два телефона, камера, фото по
+  запросу, участники; t3 — обновление с данных 3.2 (цвета, старые фото, общая карта), журнал, присланная точка, «Назад»,
+  экспорт, PDF; t4 — настоящий Firebase (анонимный вход вместо Google, работает только со старыми правилами; пишет
+  тестовую карту — сказать пользователю); t5 — итальянский.
+- Глобальные `Store`, `Sync`, `Auth` доступны из теста (`Store.data` — это `S` страницы).
 
-## План: перенос прототипа в APK (решено 06.11.2026, делать по команде «делай перенос в APK»)
+## Состояние на 09.11.2026 — перенос прототипа в APK (4.0) сделан
 
-Сейчас в APK версия 5 / 3.2 (страница ~5800 строк). Прототип ушёл далеко вперёд (~8600 строк): режимы «Проект/Выполнение»,
-авто-цвет, схема и PDF схемы, PDF участка, камера с подписью на фото, журнал и отчёт, легенда Open Fiber, поворот карты,
-панель «Слои», кабель через развилки (`ly.via`), продолжение линии с маркера. Переносим всё, **кроме ролей и людей**.
-
-Где взять прототип: живой артефакт (slug `7d5b4188-d90b-43f1-a4ce-3c204990d0c8`), читать свежую версию через Artifact
-`read` (страница ~1 МБ, сохраняется в файл). Локальная папка `proto-work/` в git не входит. Проверки прототипа (Playwright,
-`node test/sNN.js <путь к index.html> <папка для снимков>`) лежат в `proto-tests/`.
-
-Решения пользователя:
-1. Всё старое остаётся «Выполнено» и с прежним видом. В APK объект без своего цвета рисуется цветом папки, а в прототипе —
-   красным, и миграция `stageV1` делает всё красное проектом. Поэтому при первом запуске новой версии: прописать
-   `color = цвет папки` объектам без цвета и выставить `S.stageV1 = true` **до** миграций (ничего не становится проектом).
-   Осторожно с синими папками: их объекты станут «уже существует» — предупредить пользователя.
-2. Журнал и отчёт — у каждого телефона свои (как в прототипе).
-5. Аккаунты — в этом же обновлении, **обязательно**, «как в играх»: вход через Google — телефон показывает список
-   своих Google-аккаунтов, нажал — и всё, без пароля; потом один раз спросить имя (подставить имя из Google).
-   Имя видно всем, email — только самому человеку в «Настройки → Аккаунт» (там же сменить имя, «Выйти»).
-   Делать нативно: MainActivity — Credential Manager «Sign in with Google» (библиотеки androidx.credentials
-   и googleid в app/build.gradle) → ID-токен в страницу → Firebase JS `signInWithCredential(GoogleAuthProvider…)`.
-   От пользователя (по шагам): включить провайдер Google в Authentication, добавить Android-приложение
-   `com.fibra.fieldmapweb` с SHA-1 от `app/debug.keystore`, прислать Web client ID. Нужны сервисы Google на телефоне
-   (у Huawei без них не войти; считаем, что таких нет). Настоящий вход проверяется только на телефоне. Устройство данных:
-   - человек = uid аккаунта; у всех объектов `createdBy`/`updatedBy` = uid (Store ставит сам, как `updatedAt`),
-     в журнале и подписи фото — uid, на экране — имя;
-   - на карте: `maps/{код}/members/{uid}` = `{ name, role, joinedAt }` (пишется при входе в карту; email туда не кладём);
-     сейчас у всех `role: 'editor'`, первый вошедший — `owner`. Правила пока пускают всех с кодом, позже проверяют роль;
-   - обновление со старого APK: телефон был анонимным — вход через Google привязывается к тому же uid
-     (`linkWithCredential`), ничего не теряется; «Выйти» — данные на телефоне остаются;
-   - первый вход нужен с интернетом, дальше вход хранится на телефоне;
-   - в меню «Вы: имя» и список «Участники карты»; экран «Люди и роли» прототипа — будущий экран ролей и бригад.
-   Решено: владелец общей карты — первый, кто войдёт в неё после обновления (`role: 'owner'`, передать можно позже);
-   правила Firestore сразу пускают только вошедших через Google (`request.auth.token.firebase.sign_in_provider
-   != 'anonymous'`) — новые правила пользователь вставляет в консоли сам, дать текст и шаги. Подтверждение email
-   не нужно — его даёт Google. Телефонов без сервисов Google (Huawei)
-   считаем, что нет (пользователь: пока не думать об этом).
-3. Фото скачиваются только при открытии (отложенная задача 1) — делать вместе с камерой.
-4. «Проект» и рисование линий — всем (ролей нет): `me()` — всегда активный админ; «Люди и роли», «Смотреть как», бригады
-   в отчёте — скрыть.
-
-Шаги:
-1. Взять страницу прототипа, убрать фото Бузаллы (`<img id="bgImg">` base64 ~0,5 МБ) и сетку; заново встроить то, что есть
-   в старой странице APK: `<script>` firebase-config/store/kml/sync, `loadData/saveData` через Store, статус и код общей
-   карты (Sync), подложка Google/CARTO (`lyrs=`), AndroidBridge (`shareFile`, `shareText`, `openMap`, `takeShared`,
-   `requestLocationPermission`), `__onBack`, `__onLocationPermission`, `__onSharedLocation`, импорт/экспорт KML и данных.
-   Найти по старой странице: `grep -n "Store\.\|SY\b\|AndroidBridge\|__on\|lyrs=\|Kml\." index.html`.
-2. store.js/sync.js: фото у маркеров **и линий** теперь объекты `{id, lat, lng, t, by, gps?, src?}` (старые — строки).
-   Сейчас `sanitize` оставляет только строки — новые фото пропадут. Объединить PhotoStore прототипа (IndexedDB
-   `fieldmap_photos`) с фото Store; документы `photos_{id}` не подписывать целиком, а читать по одному при открытии.
-   Личное (не общее): `workMode`, `autoColor`, `log`, `logSnap`, `reportPlace`, цвета, вид карты.
-3. Камера: MainActivity — `onShowFileChooser` с захватом камеры, разрешение CAMERA, файл через FileProvider; место
-   съёмки — GPS. Адрес на подписи фото (геокодер телефона) — по желанию.
-4. PDF (участок и схема): вместо `window.claude.use('downloads')` — AndroidBridge (новый метод для двоичного файла,
-   base64) → «Поделиться»/сохранить. Плитки Google грузить с `crossOrigin='anonymous'` (проверить, что PDF не пустой).
-5. Версия 6 / 4.0. Проверка: два «телефона» через `FIELDMAP_BACKEND_FACTORY`, потом настоящий Firebase с тестовой картой;
-   сборка GitHub Actions; APK — файлом. Пользователь сначала проверяет на тестовой карте.
-6. Обновляться всем в один день: старый APK при правке маркера выбросит новые фото у всех.
+Сделано всё из плана от 06.11.2026: прототип целиком (кроме ролей и людей), миграция, камера, PDF, фото по запросу,
+вход через Google, участники карты, новые правила. **Ждём от пользователя** (шаги дали в чате и в README):
+включить провайдер Google, добавить Android-приложение с SHA-1, прислать **Web client ID** → вписать в
+`js/firebase-config.js` (`GOOGLE_WEB_CLIENT_ID`), собрать APK. Без него вход не работает, а без входа нет общей карты.
+Потом: пользователь проверяет на тестовой карте, публикует `firestore.rules` (общая карта — только для вошедших
+через Google, проверка `'google.com' in request.auth.token.firebase.identities`) и обновляет все телефоны в один день
+(3.x после новых правил не синхронизируется; старый APK при правке маркера выбросил бы новые фото).
+Не проверено на телефоне: вход через Google, камера, «Сохранить»/«Поделиться» файлом, PDF с настоящими тайлами в WebView.
 
 ## Отложенные задачи (пользователь просил «потом»)
 
-1. **Фото только при открытии маркера** — сейчас фото скачиваются на все телефоны сразу; на бесплатном
-   тарифе узкое место — трафик 10 ГБ/мес и 50 000 чтений/сутки.
-2. **Роли участников**: владелец / редактор / наблюдатель, проверка в правилах Firestore; участник
-   определяется анонимным входом (переустановка = новый участник).
+1. **Роли участников**: владелец / редактор / наблюдатель, проверка в правилах Firestore. Участник — uid Google-аккаунта
+   (`maps/{код}/members`); экран «Люди и роли» прототипа — будущий экран ролей и бригад (сейчас скрыт).
+2. Город в отчёте сам (обратное геокодирование), общий журнал на всю карту, адрес на подписи фото — заметки в начале прототипа.
 
 Ещё предложено (не заказано): корзина и история правок; офлайн-карты («скачать район»); хранить слои
-линии отдельно (сейчас двое на одной линии затирают правки друг друга); кнопка камеры в маркере;
-«маркер там, где я стою», запись трека, экономия батареи GPS; отчёты (Excel/PDF); нормальная
-подписанная сборка и уведомление об обновлении.
+линии отдельно (сейчас двое на одной линии затирают правки друг друга); «маркер там, где я стою», запись трека,
+экономия батареи GPS; отчёты (Excel/PDF); нормальная подписанная сборка и уведомление об обновлении.
 
 ## Правила работы с пользователем
 
