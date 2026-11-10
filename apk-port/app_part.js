@@ -287,11 +287,19 @@
   function loginPrompt() {
     if (!AU || AU.google() || !AU.configured() || !window.GOOGLE_WEB_CLIENT_ID || !(window.AndroidBridge && window.AndroidBridge.googleSignIn)) return;
     if (pageIsOpen() || !$('sheet').classList.contains('hidden')) return;
+    if (lsLater('fieldmap_login_later')) return;     // «Позже» — до завтра не спрашиваем
     openSheet(
       h('h3', { text: 'Вход через Google' }),
       h('div', { class: 'note', style: 'margin:0 2px 14px', text: 'Вход — один раз: выберите свой Google-аккаунт, пароль не нужен. Нужен для общей карты: так видно, кто что поставил.' }),
       h('button', { class: 'btn primary', text: 'Войти через Google', onclick: () => { closeSheet(); signInFlow(); } }),
-      h('button', { class: 'btn ghost', text: 'Позже', onclick: closeSheet }));
+      h('button', { class: 'btn ghost', text: 'Позже', onclick: () => { lsLater('fieldmap_login_later', true); closeSheet(); } }));
+  }
+  // «Позже»: запоминается до конца дня
+  function lsLater(key, set) {
+    try {
+      if (set) { localStorage.setItem(key, new Date().toDateString()); return true; }
+      return localStorage.getItem(key) === new Date().toDateString();
+    } catch (e) { return false; }
   }
 
   // ---------- точка из Google Карт, WhatsApp и т.п.: «Поделиться» → FieldMap ставит маркер ----------
@@ -378,11 +386,231 @@
     return false;
   };
 
-  // ---------- запуск части приложения: общая карта, вход, GPS, присланная точка ----------
+  // ---------- значок «отправлено»: видно, ушла ли работа на общую карту ----------
+  const SYNC_MARK = { ok: 'M9.3 13.6l1.9 1.9 3.6-4', pend: 'M12 16.2v-5.4M9.7 13l2.3-2.4 2.3 2.4', off: 'M10 11.6l4 4M14 11.6l-4 4', wait: '' };
+  function syncChipState() {
+    if (!(ST && ST.mapId && syncReady())) return null;
+    const n = ST.unsentCount(), st = SY.status().state;
+    if (!(AU && AU.google()) || st === 'off') return { cls: 'off', n };
+    if (n) return { cls: 'pend', n };
+    return { cls: st === 'online' ? 'ok' : 'wait', n: 0 };
+  }
+  function updateSyncChip() {
+    const b = $('tbSync');
+    if (!b) return;
+    const s = syncChipState();
+    b.hidden = !s;
+    if (!s) return;
+    b.className = 'tb-btn tb-sync ' + s.cls;
+    b.querySelector('.sy-mark').setAttribute('d', SYNC_MARK[s.cls]);
+    $('tbSyncN').textContent = s.n ? (s.n > 99 ? '99+' : String(s.n)) : '';
+  }
+  function syncChipTap() {
+    const s = syncChipState();
+    if (!s) return;
+    if (s.cls === 'ok') toast('Всё отправлено на общую карту');
+    else if (s.cls === 'pend') toast(`${tr('Ждут отправки:')} ${s.n}. ${tr('Уйдут сами, когда появится сеть')}`);
+    else if (s.cls === 'wait') toast('Нет связи с общей картой. Неотправленных правок нет');
+    else { toast(s.n ? `${tr('Общая карта не подключена. Ждут отправки:')} ${s.n}` : 'Общая карта не подключена'); openSyncPage(); }
+  }
+
+  // ---------- кто поставил и кто менял (имена участников общей карты) ----------
+  function authorText(it) {
+    if (!it || !SY) return '';
+    const a = SY.nameOf(it.createdBy), b = it.updatedBy && it.updatedBy !== it.createdBy ? SY.nameOf(it.updatedBy) : '';
+    return [a ? `${tr('Добавил:')} ${a}` : '', b ? `${tr('изменил:')} ${b}` : ''].filter(Boolean).join(' · ');
+  }
+  const shotAuthor = (p) => (SY && isShot(p) && p.by ? SY.nameOf(p.by) : '');
+
+  // ---------- корзина: удалённое можно вернуть 30 дней ----------
+  function trashTitle(e) {
+    const o = e.obj || {};
+    if (e.kind === 'folders') return `${tr('Объект')} «${o.name || ''}»`;
+    if (e.kind === 'markers') return o.name || shapeName(shapeId(o));
+    if (e.kind === 'lines') return o.name || tr('Линия');
+    if (e.kind === 'reels') return o.name || tr('Бобина');
+    return `${o.name || layerTypeName(o)} · ${e.lineName || tr('Линия')}`;
+  }
+  function trashKind(e) {
+    const o = e.obj || {};
+    if (e.kind === 'markers') return tr('Маркер');
+    if (e.kind === 'lines') return `${tr('Линия')} · ${fmtLen(pathLen(o.points || []))}`;
+    if (e.kind === 'reels') return tr('Бобина');
+    if (e.kind === 'layers') return `${layerTypeName(o)} · ${fmtLen(pathLen(o.points || []))}`;
+    return '';
+  }
+  function trashWho(e) {
+    const who = e.by ? (e.by === me().id ? tr('вы') : SY ? SY.nameOf(e.by) : '') : '';
+    return [who ? `${tr('удалил:')} ${who}` : '', fmtStamp(e.t)].filter(Boolean).join(' · ');
+  }
+  async function trashRestoreGroup(list) {
+    const res = await ST.trashRestore(list.map((e) => e.key));
+    if (!res.done) {
+      toast(list.some((e) => e.kind === 'layers') ? 'Линии этого слоя нет на карте — сначала верните линию' : 'Это уже есть на карте');
+      openTrash();
+      return;
+    }
+    repairFolders();
+    list.forEach((e) => { const fid = e.kind === 'folders' ? e.obj.id : e.obj.folderId; if (fid) showFolder(topFolderId(fid)); });
+    // удаляли не на этом телефоне — в журнал работ этого телефона возврат не пишется
+    if (res.foreign && journalOn) S.logSnap = workNow();
+    fixActiveFolder();
+    commit();
+    toast('Возвращено на карту');
+    openTrash();
+  }
+  async function openTrash() {
+    const box = h('div', null, pgCard(h('div', { class: 'pg-note', text: 'Загружаю…' })));
+    openPage('Корзина', { onBack: () => { closePage(); openDrawer(); } }, [
+      h('div', { class: 'note', style: 'margin:14px 16px 2px', text: 'Удалённое хранится на этом телефоне 30 дней. «Вернуть» возвращает его на карту — и на общую карту тоже.' }),
+      box]);
+    $('page').dataset.screen = 'trash';
+    const list = ST ? await ST.trashList() : [];
+    if (!pageIsOpen() || $('page').dataset.screen !== 'trash') return;
+    if (!list.length) { box.replaceChildren(pgCard(h('div', { class: 'pg-note', text: 'Корзина пуста' }))); return; }
+    // одно удаление — одна строка (объект удаляется вместе со всем, что в нём было)
+    const groups = new Map();
+    list.forEach((e) => { if (!groups.has(e.g)) groups.set(e.g, []); groups.get(e.g).push(e); });
+    const rowOf = (g) => {
+      const head = g.find((e) => e.kind === 'folders' && !e.obj.parentId) || g.find((e) => e.kind === 'folders') || (g.length === 1 ? g[0] : null);
+      const cnt = (k) => g.filter((e) => e.kind === k).length;
+      const inside = [cnt('markers') ? `${cnt('markers')} ${pw(cnt('markers'), 'marker')}` : '', cnt('lines') ? `${cnt('lines')} ${pw(cnt('lines'), 'line')}` : ''].filter(Boolean).join(', ');
+      const title = head ? trashTitle(head) : inside || `${g.length}`;
+      const sub = [head && head.kind !== 'folders' ? trashKind(head) : (head ? inside : ''), trashWho(g[0])].filter(Boolean).join(' · ');
+      return h('div', { class: 'mem-row tr-row' }, ico(head && head.kind === 'folders' ? 'folder' : 'trash'),
+        h('div', { class: 'tr-txt' }, h('b', { text: title }), h('small', { text: sub })),
+        h('button', { type: 'button', class: 'tr-btn', text: 'Вернуть', onclick: () => trashRestoreGroup(g) }));
+    };
+    box.replaceChildren(h('div', { class: 'pg-card' }, [...groups.values()].map(rowOf)));
+  }
+
+  // ---------- обновление приложения без APK ----------
+  // Описание обновления (update.json) лежит в релизах GitHub: stable — для всех, latest — пробные версии.
+  // web — новая страница приложения (скачивается, проверяется и подставляется при следующем запуске);
+  // apk — новый файл приложения, когда странице нужна более новая оболочка. minWeb — обязательная версия:
+  // более старая страница не подключается к общей карте, пока её не обновят.
+  const UPD = (() => {
+    const W = window.FM_WEB && window.FM_WEB.v > 0 ? window.FM_WEB : null;   // нет — страница открыта не из сборки
+    const B = () => window.AndroidBridge || {};
+    const BASE = 'https://github.com/zlontp98-bit/FieldMap/releases/download/';
+    const CH_KEY = 'fieldmap_channel', MIN_KEY = 'fieldmap_minweb', LATER_KEY = 'fieldmap_upd_later', SEEN_KEY = 'fieldmap_seen_web';
+    const MUST = 'Обновите приложение: старая версия не работает с общей картой';
+    const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+    const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } };
+    const channel = () => (lsGet(CH_KEY) === 'test' ? 'test' : 'stable');
+    let offer = null, busy = false, lastCheck = 0;
+    function shell() { try { return JSON.parse(B().updateState ? B().updateState() : '{}') || {}; } catch (e) { return {}; } }
+    const waiters = {};
+    let seq = 0;
+    window.__onFetchText = (id, text) => { const f = waiters[id]; delete waiters[id]; if (f) f(typeof text === 'string' ? text : null); };
+    function getText(url) {
+      return new Promise((res) => {
+        if (B().fetchText) {
+          const id = 'f' + (++seq);
+          waiters[id] = res;
+          setTimeout(() => { if (waiters[id]) { delete waiters[id]; res(null); } }, 25000);
+          B().fetchText(url, id);
+          return;
+        }
+        fetch(url, { cache: 'no-store' }).then((r) => (r.ok ? r.text() : null)).then(res, () => res(null));
+      });
+    }
+    function setBlock(must) { if (SY) SY.block(must ? MUST : ''); }
+    // проверка: есть ли обновление. manual — нажали «Проверить обновление» (тогда отвечаем и «у вас последняя версия»)
+    async function check(manual) {
+      if (!W) { if (manual) toast('Обновления работают только в приложении на телефоне'); return null; }
+      lastCheck = Date.now();
+      const txt = await getText(BASE + (channel() === 'test' ? 'latest' : 'stable') + '/update.json');
+      let m = null;
+      try { m = txt ? JSON.parse(txt) : null; } catch (e) { m = null; }
+      if (!m || !m.web || !(m.web.version > 0)) { if (manual) toast('Не удалось проверить обновление. Проверьте интернет'); return null; }
+      const sh = shell(), apkNow = sh.apk || 0, minWeb = m.minWeb || 0;
+      lsSet(MIN_KEY, String(minWeb));
+      const must = W.v < minWeb;
+      const apkNewer = m.apk && m.apk.versionCode > apkNow && !!B().downloadApk;
+      if (apkNewer && ((m.web.minApk || 0) > apkNow || m.apk.push === true)) offer = { kind: 'apk', name: m.apk.versionName || m.web.name, m, must };
+      else if (m.web.version > W.v && m.web.version !== (sh.bad || 0) && (m.web.minApk || 0) <= apkNow && B().downloadWebUpdate) offer = { kind: 'web', name: m.web.name, m, must };
+      else offer = null;
+      setBlock(must);
+      if (drawerOpen()) renderTop();
+      if (offer) {
+        const later = lsGet(LATER_KEY);
+        if (manual || must || later !== `${offer.kind}${offer.kind === 'apk' ? m.apk.versionCode : m.web.version}:${new Date().toDateString()}`) show();
+      } else if (manual) toast('У вас последняя версия');
+      return offer;
+    }
+    function show() {
+      if (!offer || (!$('sheet').classList.contains('hidden') && !offer.must)) return;
+      const m = offer.m, notes = (m.notes && (m.notes[LANG] || m.notes.ru)) || '';
+      openSheet(
+        h('h3', { text: offer.must ? 'Нужно обновить приложение' : `${tr('Доступно обновление')} ${offer.name || ''}` }),
+        offer.must ? h('div', { class: 'note', style: 'margin:0 2px 10px', text: MUST }) : null,
+        notes ? h('div', { class: 'note', style: 'margin:0 2px 12px', text: notes }) : null,
+        offer.kind === 'apk' ? h('div', { class: 'note', style: 'margin:0 2px 12px', text: 'Скачается новый файл приложения. Потом телефон спросит разрешение на установку — разрешите. Данные останутся.' })
+          : h('div', { class: 'note', style: 'margin:0 2px 12px', text: 'Займёт несколько секунд. Данные останутся.' }),
+        h('button', { class: 'btn primary', text: 'Обновить', onclick: () => { closeSheet(); run(); } }),
+        h('button', { class: 'btn ghost', text: 'Позже', onclick: () => {
+          lsSet(LATER_KEY, `${offer.kind}${offer.kind === 'apk' ? m.apk.versionCode : m.web.version}:${new Date().toDateString()}`);
+          closeSheet();
+        } }));
+    }
+    window.__onWebUpdate = (r) => {
+      busy = false;
+      let o = r;
+      if (typeof o === 'string') { try { o = JSON.parse(o); } catch (e) { o = null; } }
+      if (o && o.ok) { toast('Обновление скачано. Перезапускаю…'); if (ST) ST.persist(); setTimeout(() => location.reload(), 600); }
+      else toast('Не удалось скачать обновление. Проверьте интернет и попробуйте ещё раз');
+    };
+    window.__onApkUpdate = (r) => {
+      let o = r;
+      if (typeof o === 'string') { try { o = JSON.parse(o); } catch (e) { o = null; } }
+      if (!o) return;
+      if (o.state === 'progress') toast(o.pct >= 0 ? `${tr('Скачиваю обновление…')} ${o.pct}%` : 'Скачиваю обновление…');
+      else if (o.state === 'install') { busy = false; toast('Обновление скачано. Нажмите «Установить»'); }
+      else { busy = false; toast('Не удалось скачать обновление. Проверьте интернет и попробуйте ещё раз'); }
+    };
+    function run() {
+      if (!offer || busy) return;
+      busy = true;
+      toast('Скачиваю обновление…');
+      const m = offer.m;
+      if (offer.kind === 'apk') B().downloadApk(m.apk.url, m.apk.sha256);
+      else B().downloadWebUpdate(m.web.url, m.web.sha256, m.web.version);
+      setTimeout(() => { busy = false; }, 120000);
+    }
+    function start() {
+      if (!W) return;
+      try { if (B().bootOk) B().bootOk(W.v); } catch (e) { /* ignore */ }
+      // после обновления страницы: один раз сказать, что обновилось
+      const seen = Number(lsGet(SEEN_KEY)) || 0;
+      if (seen && seen < W.v) setTimeout(() => toast(`${tr('Приложение обновлено: версия')} ${W.name}`), 1200);
+      if (seen !== W.v) lsSet(SEEN_KEY, String(W.v));
+      // обязательная версия, запомненная с прошлой проверки, действует и без сети
+      if (W.v < (Number(lsGet(MIN_KEY)) || 0)) setBlock(true);
+      // подключение к общей карте ждёт первую проверку версии (не дольше 6 секунд)
+      const first = check(false).catch(() => null);
+      if (SY) SY.setGate(Promise.race([first, new Promise((r) => setTimeout(r, 6000))]));
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && Date.now() - lastCheck > 3 * 3600000) check(false); });
+      setInterval(() => { if (Date.now() - lastCheck > 6 * 3600000) check(false); }, 30 * 60000);
+    }
+    return {
+      start, check, show,
+      get offer() { return offer; },
+      version: () => (W ? `${W.name} (${W.v})` : '—'),
+      channel,
+      setChannel(c) { lsSet(CH_KEY, c === 'test' ? 'test' : 'stable'); lsSet(LATER_KEY, ''); check(true); },
+    };
+  })();
+
+  // ---------- запуск части приложения: проверка версии, общая карта, вход, GPS, присланная точка ----------
   function appStart() {
+    UPD.start();
+    $('tbSync').onclick = syncChipTap;
+    if (ST) ST.onUnsent(updateSyncChip);
     if (SY) {
       SY.onRemote(onRemoteData);
       SY.onStatus((st) => {
+        updateSyncChip();
         if (drawerOpen()) renderTop();
         if (syncPageOpen()) {
           if (!!(ST && ST.mapId) !== syncPageConnected) openSyncPage();
@@ -394,12 +622,14 @@
     if (AU) {
       AU.onChange((u) => {
         if (ST) ST.setUser(u && u.google ? u.uid : null);
+        updateSyncChip();
         if (drawerOpen()) renderDrawer();
         if (syncPageOpen()) openSyncPage();
       });
       AU.start().catch(() => { /* без интернета: остаётся вход, сохранённый на телефоне */ });
     }
     if (SY) SY.autostart();
+    updateSyncChip();
     gpsStart();
     // точка, присланная в приложение до загрузки страницы (Поделиться → FieldMap)
     let shared = null;

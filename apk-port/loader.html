@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>FieldMap</title>
+<style>html,body{margin:0;height:100%;background:#1b1d22}</style>
+</head>
+<body>
+<script>
+// Загрузчик. Сама страница приложения — app.html (встроена в APK) или её обновление, скачанное без APK:
+// оболочка (MainActivity.appHtml) отдаёт текст страницы, и он подставляется в этот же документ.
+// Адрес остаётся file:///android_asset/web/index.html — к нему привязаны данные на телефоне.
+window.addEventListener('load', function () {
+  function show(html) { document.open(); document.write(html); document.close(); }
+  function builtin() {
+    try {
+      var x = new XMLHttpRequest();
+      x.open('GET', 'app.html', true);
+      x.onload = function () { if (x.responseText) show(x.responseText); else location.replace('app.html'); };
+      x.onerror = function () { location.replace('app.html'); };
+      x.send();
+    } catch (e) { location.replace('app.html'); }
+  }
+  var html = '';
+  try { var b = window.AndroidBridge; if (b && b.appHtml) html = b.appHtml() || ''; } catch (e) { html = ''; }
+  if (html) { try { show(html); return; } catch (e) { /* ниже — встроенная страница */ } }
+  builtin();
+});
+</script>
+</body>
+</html>

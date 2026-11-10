@@ -6,8 +6,8 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 
-// FM_WEB — папка web распакованного проекта (fieldmap2/app/src/main/assets/web); снимки и файлы — в FM_OUT
-const WEB_SRC = process.env.FM_WEB || path.resolve(__dirname, '../work/fieldmap2/app/src/main/assets/web');
+// FM_WEB — исходники страницы в распакованном проекте (fieldmap2/web: index.html + js/); снимки и файлы — в FM_OUT
+const WEB_SRC = process.env.FM_WEB || path.resolve(__dirname, '../work/fieldmap2/web');
 const SP = process.env.FM_OUT || path.join(require('os').tmpdir(), 'fieldmap-tests');
 fs.mkdirSync(path.join(SP, 'tests/shots'), { recursive: true });
 
@@ -81,15 +81,28 @@ function makeRelay() {
 
 const INIT = () => {
   // ---- заглушки: Firestore, вход Google, AndroidBridge ----
+  // «нет сети»: window.__setOnline(false) — отправки ждут, пришедшие изменения копятся; __setOnline(true) — всё проходит
+  // (сначала мои отправки, потом чужие изменения; __setOnline(true, true) — наоборот)
+  const net = window.__net = { on: true, out: [], inc: [] };
+  window.__setOnline = (on, remoteFirst) => {
+    net.on = !!on;
+    if (!on) return;
+    const out = net.out.splice(0), inc = net.inc.splice(0);
+    (remoteFirst ? [inc, out] : [out, inc]).forEach((l) => l.forEach((f) => f()));
+  };
+  const whenOnline = () => new Promise((r) => { if (net.on) r(); else net.out.push(r); });
   window.FIELDMAP_BACKEND_FACTORY = async () => ({
     async subscribe(mapId, h) {
       const id = await window.__relaySub(mapId);
       window.__relayH = window.__relayH || {};
-      window.__relayH[id] = h;
-      return { push: (kind, docId, data) => window.__relayPush(mapId, kind + '_' + docId, data), close() { delete window.__relayH[id]; window.__relayUnsub(id); } };
+      window.__relayH[id] = {
+        onChanges: (c, m) => { if (net.on) h.onChanges(c, m); else net.inc.push(() => h.onChanges(c, m)); },
+        onState: (a, b) => h.onState(a, b),
+      };
+      return { push: async (kind, docId, data) => { await whenOnline(); return window.__relayPush(mapId, kind + '_' + docId, data); }, close() { delete window.__relayH[id]; window.__relayUnsub(id); } };
     },
     async getPhoto(mapId, id) { const d = await window.__relayGet(mapId, 'photos_' + id); return d ? d.data : null; },
-    putPhoto: (mapId, id, data) => window.__relayPush(mapId, 'photos_' + id, { kind: 'photos', id, data, updatedAt: 1 }),
+    putPhoto: async (mapId, id, data) => { await whenOnline(); return window.__relayPush(mapId, 'photos_' + id, { kind: 'photos', id, data, updatedAt: 1 }); },
     joinMember: (mapId, me) => window.__relayMember(mapId, me),
     members: (mapId) => window.__relayMembers(mapId),
   });

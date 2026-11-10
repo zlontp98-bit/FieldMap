@@ -60,9 +60,27 @@ APK_CSS = '''/* ---- только в приложении: общая карта
 .mem-row small{display:block;color:var(--tx-2, #9aa0a6);margin-top:2px}
 .login-g{display:flex;align-items:center;justify-content:center;gap:10px}
 .login-g svg{width:20px;height:20px;flex:none}
+/* значок «отправлено» в верхней полосе */
+.tb-btn.tb-sync{position:relative}
+.tb-btn.tb-sync svg, .tb-btn.tb-sync svg *{stroke:#9aa0a6}
+.tb-btn.tb-sync.ok svg, .tb-btn.tb-sync.ok svg *{stroke:#4ade80}
+.tb-btn.tb-sync.pend svg, .tb-btn.tb-sync.pend svg *{stroke:#fbbf24}
+.tb-btn.tb-sync.off svg, .tb-btn.tb-sync.off svg *{stroke:#f87171}
+.tb-sync b{position:absolute;right:3px;top:4px;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:8px;background:#fbbf24;color:#000;font:700 10px/16px system-ui,sans-serif;text-align:center}
+.tb-sync b:empty{display:none}
+.tb-by{opacity:.8}
+/* корзина */
+.tr-row .tr-txt{flex:1;min-width:0}
+.tr-row .tr-txt b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tr-btn{flex:none;border:0;border-radius:10px;padding:9px 12px;background:rgba(59,130,246,.18);color:#93c5fd;font:600 14px system-ui,sans-serif}
+.tr-btn:active{background:rgba(59,130,246,.3)}
 '''
 rep('</style>\n\n<canvas id="map"', APK_CSS + '</style>\n</head>\n<body>\n<canvas id="map"')
 rep_re(r'<img id="bgImg"[^\n]*\n', '')
+
+# значок «отправлено» в верхней полосе, рядом с меню и поиском
+insert_after('''<path d="M16 16l4.5 4.5"/></svg></button>\n''',
+             '''  <button id="tbSync" class="tb-btn tb-sync" aria-label="Общая карта: отправлено или ждёт сети" hidden><svg viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-.5-8A6 6 0 0 1 18 9a4 4 0 0 1 0 9z"/><path class="sy-mark" d=""/></svg><b id="tbSyncN"></b></button>\n''')
 
 insert_before('<script>\n(function () {\n', '''<input id="fileInput" type="file" hidden>
 <script src="js/firebase-config.js"></script>
@@ -174,6 +192,50 @@ T = [
     ('Не удалось загрузить список', 'Impossibile caricare l’elenco', 'Could not load the list'),
     ('Кто работает с этой картой', 'Chi lavora su questa mappa', 'Who works on this map'),
     ('с', 'dal', 'since'),
+    # значок «отправлено», авторы, корзина
+    ('Общая карта: отправлено или ждёт сети', 'Mappa condivisa: inviato o in attesa di rete', 'Shared map: sent or waiting for network'),
+    ('Всё отправлено на общую карту', 'Tutto è stato inviato alla mappa condivisa', 'Everything is sent to the shared map'),
+    ('Ждут отправки:', 'In attesa di invio:', 'Waiting to be sent:'),
+    ('Уйдут сами, когда появится сеть', 'Partiranno da soli quando torna la rete', 'They will go on their own when the network is back'),
+    ('Нет связи с общей картой. Неотправленных правок нет', 'Nessuna connessione alla mappa condivisa. Non ci sono modifiche da inviare', 'No connection to the shared map. Nothing is waiting to be sent'),
+    ('Общая карта не подключена. Ждут отправки:', 'Mappa condivisa non collegata. In attesa di invio:', 'Shared map is not connected. Waiting to be sent:'),
+    ('Общая карта не подключена', 'Mappa condivisa non collegata', 'Shared map is not connected'),
+    ('Добавил:', 'Aggiunto da:', 'Added by:'),
+    ('изменил:', 'modificato da:', 'changed by:'),
+    ('удалил:', 'eliminato da:', 'deleted by:'),
+    ('вы', 'tu', 'you'),
+    ('Корзина', 'Cestino', 'Trash'),
+    ('Корзина пуста', 'Il cestino è vuoto', 'The trash is empty'),
+    ('Вернуть', 'Ripristina', 'Restore'),
+    ('Возвращено на карту', 'Ripristinato sulla mappa', 'Restored to the map'),
+    ('Это уже есть на карте', 'È già sulla mappa', 'It is already on the map'),
+    ('Линии этого слоя нет на карте — сначала верните линию', 'La linea di questo strato non è sulla mappa: ripristina prima la linea', 'The line of this layer is not on the map — restore the line first'),
+    ('Удалённое можно вернуть в течение 30 дней', 'Gli elementi eliminati si possono ripristinare entro 30 giorni', 'Deleted items can be restored within 30 days'),
+    ('Удалённое хранится на этом телефоне 30 дней. «Вернуть» возвращает его на карту — и на общую карту тоже.',
+     'Gli elementi eliminati restano su questo telefono per 30 giorni. «Ripristina» li rimette sulla mappa, anche su quella condivisa.',
+     'Deleted items are kept on this phone for 30 days. “Restore” puts them back on the map — the shared map too.'),
+    # обновление
+    ('Доступно обновление', 'Aggiornamento disponibile', 'Update available'),
+    ('Нажмите, чтобы обновить', 'Tocca per aggiornare', 'Tap to update'),
+    ('Нужно обновить приложение', 'Bisogna aggiornare l’app', 'The app must be updated'),
+    ('Обновите приложение: старая версия не работает с общей картой', 'Aggiorna l’app: la versione vecchia non funziona con la mappa condivisa', 'Update the app: the old version does not work with the shared map'),
+    ('Скачается новый файл приложения. Потом телефон спросит разрешение на установку — разрешите. Данные останутся.',
+     'Verrà scaricato il nuovo file dell’app. Poi il telefono chiederà il permesso di installare: consenti. I dati restano.',
+     'A new app file will be downloaded. Then the phone will ask for permission to install — allow it. Your data stays.'),
+    ('Займёт несколько секунд. Данные останутся.', 'Ci vogliono pochi secondi. I dati restano.', 'It takes a few seconds. Your data stays.'),
+    ('Обновить', 'Aggiorna', 'Update'),
+    ('Скачиваю обновление…', 'Scarico l’aggiornamento…', 'Downloading the update…'),
+    ('Обновление скачано. Перезапускаю…', 'Aggiornamento scaricato. Riavvio…', 'Update downloaded. Restarting…'),
+    ('Обновление скачано. Нажмите «Установить»', 'Aggiornamento scaricato. Tocca «Installa»', 'Update downloaded. Tap “Install”'),
+    ('Не удалось скачать обновление. Проверьте интернет и попробуйте ещё раз', 'Impossibile scaricare l’aggiornamento. Controlla internet e riprova', 'Could not download the update. Check the internet and try again'),
+    ('Не удалось проверить обновление. Проверьте интернет', 'Impossibile controllare gli aggiornamenti. Controlla internet', 'Could not check for updates. Check the internet'),
+    ('Обновления работают только в приложении на телефоне', 'Gli aggiornamenti funzionano solo nell’app sul telefono', 'Updates only work in the app on the phone'),
+    ('У вас последняя версия', 'Hai l’ultima versione', 'You have the latest version'),
+    ('Приложение обновлено: версия', 'App aggiornata: versione', 'App updated: version'),
+    ('Приложение', 'App', 'App'),
+    ('Версия', 'Versione', 'Version'),
+    ('проверить обновление', 'controlla aggiornamenti', 'check for updates'),
+    ('Пробные версии: получать обновления раньше всех (для проверки)', 'Versioni di prova: ricevi gli aggiornamenti prima di tutti (per verifica)', 'Test versions: get updates before everyone else (for checking)'),
 ]
 for lang, col in (('it', 1), ('en', 2)):
     m = re.search(r'\n "' + lang + r'": \{\n(.*?)\n \}', s, re.S)
@@ -511,6 +573,19 @@ rep("""    const blob = new Blob([bytes], { type: 'image/jpeg' });
       try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
     }""")
 
+# ---------------------------------------------------------------- защита работы: кто добавил, корзина
+# карточка маркера и линии: кто добавил и кто менял; просмотр фото: кто снял
+rep("""        h('div', { class: 'tb-dt', text: fmtDate(date) }),
+        desc ? h('div', { class: 'tb-desc', text: desc }) : null,""", """        h('div', { class: 'tb-dt', text: fmtDate(date) }),
+        authorText(owner) ? h('div', { class: 'tb-dt tb-by', text: authorText(owner) }) : null,
+        desc ? h('div', { class: 'tb-desc', text: desc }) : null,""")
+rep("""    $('vCount').textContent = `${viewer.i + 1} / ${viewer.list.length}`;""",
+    """    $('vCount').textContent = `${viewer.i + 1} / ${viewer.list.length}` + (shotAuthor(p) ? ` · ${shotAuthor(p)}` : '');""")
+# фото удалённых объектов (в корзине) не выбрасываем
+rep("""    (await PhotoStore.keys()).forEach((k) => { if (!used.has(k)) PhotoStore.del(k); });""",
+    """    if (ST && ST.trashPhotoIds) (await ST.trashPhotoIds()).forEach((id) => used.add(id));
+    (await PhotoStore.keys()).forEach((k) => { if (!used.has(k)) PhotoStore.del(k); });""")
+
 # ---------------------------------------------------------------- PDF: «Поделиться» и «Сохранить» через AndroidBridge
 rep("""    const blob = new Blob([pdf], { type: 'application/pdf' });
     if (share) {
@@ -527,7 +602,8 @@ rep("""  async function deliverPdf(pdf, name, share) {
 
 # ---------------------------------------------------------------- меню: общая карта, тип карты, аккаунт; без «Люди и роли»
 rep("""        row('☁️', 'Общая карта', 'Синхронизация не запускается в прототипе', () => notYet('Синхронизация')),""",
-    """        row('☁️', 'Общая карта', syncSubtitle(), () => { closeDrawer(); openSyncPage(); }),
+    """        UPD.offer ? row(ico('import'), `${tr('Доступно обновление')} ${UPD.offer.name || ''}`, tr('Нажмите, чтобы обновить'), () => { closeDrawer(); UPD.show(); }) : null,
+        row('☁️', 'Общая карта', syncSubtitle(), () => { closeDrawer(); openSyncPage(); }),
         ST && ST.mapId && AU && AU.google() ? row(ico('people'), 'Участники карты', tr('Кто работает с этой картой'), () => { closeDrawer(); openMembers(); }) : null,""")
 rep("""        row(ico('user'), `${tr('Вы:')} ${me().name}`, `${personSub(Object.assign({}, me(), { id: null }))} · ${tr('Смотреть как…')}`, openWhoAmI),
         isManager() ? row(ico('people'), 'Люди и роли', peopleSummary(), () => { closeDrawer(); openPeople(); }) : null,""",
@@ -544,6 +620,10 @@ rep("""      lbl('Данные'),
       lbl('Аккаунт'),
       AU && AU.google() ? actRow('user', `${tr('Вы:')} ${me().name}`, () => { closePage(); openAccount(); })
         : actRow('user', 'Войти через Google', () => { closePage(); signInFlow(); }),
+      lbl('Приложение'),
+      actRow('import', `${tr('Версия')} ${UPD.version()} — ${tr('проверить обновление')}`, () => UPD.check(true)),
+      toggleRow('Пробные версии: получать обновления раньше всех (для проверки)', UPD.channel() === 'test',
+        () => { UPD.setChannel(UPD.channel() === 'test' ? 'stable' : 'test'); openSettings(); }),
     ]);""")
 rep("""    const toggleRow = (text, on, onclick) => h('button', { class: 'lang-row' + (on ? ' sel' : ''), onclick },
       h('span', { class: 'lang-name', text }), h('span', { class: 'lang-dot' }));
@@ -552,6 +632,9 @@ rep("""    const toggleRow = (text, on, onclick) => h('button', { class: 'lang-r
     const actRow = (icon, text, onclick) => h('button', { class: 'lang-row act-row', onclick },
       h('span', { class: 'lang-name', text }), ico(icon));
     openPage('Настройки',""")
+rep("""        row(ico('settings'), 'Настройки', 'Язык, подписи, импорт и экспорт', () => { closeDrawer(); openSettings(); })));""",
+    """        ST ? row(ico('trash'), 'Корзина', 'Удалённое можно вернуть в течение 30 дней', () => { closeDrawer(); openTrash(); }) : null,
+        row(ico('settings'), 'Настройки', 'Язык, подписи, импорт и экспорт', () => { closeDrawer(); openSettings(); })));""")
 rep("    document.title = tr('FieldMap прототип');\n", "    document.title = 'FieldMap';\n")
 
 # ---------------------------------------------------------------- отчёт: место вписывают сами; рапорт можно отправить
