@@ -74,6 +74,17 @@ APK_CSS = '''/* ---- только в приложении: общая карта
 .tr-row .tr-txt b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tr-btn{flex:none;border:0;border-radius:10px;padding:9px 12px;background:rgba(59,130,246,.18);color:#93c5fd;font:600 14px system-ui,sans-serif}
 .tr-btn:active{background:rgba(59,130,246,.3)}
+/* окно загрузки обновления */
+.upd-box{position:fixed;inset:0;z-index:5000;display:grid;place-items:center;background:rgba(0,0,0,.55)}
+.upd-card{width:min(300px,82vw);padding:22px 20px 18px;border-radius:20px;background:#1c1f26;color:#fff;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.5);font:15px system-ui,sans-serif}
+.upd-card b{display:block;font-size:17px;font-weight:650;margin:14px 0 14px}
+.upd-spin{width:34px;height:34px;margin:0 auto;border-radius:50%;border:3px solid rgba(255,255,255,.18);border-top-color:#3b82f6;animation:updspin .9s linear infinite}
+.upd-bar{height:8px;border-radius:4px;background:rgba(255,255,255,.14);overflow:hidden}
+.upd-bar i{display:block;height:100%;width:0;border-radius:4px;background:#3b82f6;transition:width .25s linear}
+.upd-bar i.run{width:35%;animation:updrun 1.2s ease-in-out infinite}
+.upd-card small{display:block;margin-top:8px;color:#9aa0a6;min-height:16px}
+@keyframes updspin{to{transform:rotate(360deg)}}
+@keyframes updrun{0%{margin-left:-35%}100%{margin-left:100%}}
 '''
 rep('</style>\n\n<canvas id="map"', APK_CSS + '</style>\n</head>\n<body>\n<canvas id="map"')
 rep_re(r'<img id="bgImg"[^\n]*\n', '')
@@ -231,6 +242,7 @@ T = [
     ('Не удалось проверить обновление. Проверьте интернет', 'Impossibile controllare gli aggiornamenti. Controlla internet', 'Could not check for updates. Check the internet'),
     ('Обновления работают только в приложении на телефоне', 'Gli aggiornamenti funzionano solo nell’app sul telefono', 'Updates only work in the app on the phone'),
     ('У вас последняя версия', 'Hai l’ultima versione', 'You have the latest version'),
+    ('Не закрывайте приложение', 'Non chiudere l’app', 'Do not close the app'),
     ('Приложение обновлено: версия', 'App aggiornata: versione', 'App updated: version'),
     ('Приложение', 'App', 'App'),
     ('Версия', 'Versione', 'Version'),

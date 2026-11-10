@@ -554,29 +554,55 @@
           closeSheet();
         } }));
     }
+    // окно загрузки поверх карты: видно, что обновление скачивается, и сколько уже скачано
+    let boxTimer = null;
+    function box(text, pct) {
+      let e = $('updBox');
+      if (!e) {
+        e = h('div', { id: 'updBox', class: 'upd-box' }, h('div', { class: 'upd-card' },
+          h('div', { class: 'upd-spin' }), h('b', { id: 'updText' }), h('div', { class: 'upd-bar' }, h('i', { id: 'updFill' })),
+          h('small', { id: 'updPct' }), h('small', { class: 'upd-hint', text: 'Не закрывайте приложение' })));
+        document.body.appendChild(e);
+      }
+      $('updText').textContent = tr(text);
+      const known = pct >= 0;
+      $('updFill').className = known ? '' : 'run';
+      $('updFill').style.width = known ? Math.max(3, Math.min(100, pct)) + '%' : '';
+      $('updPct').textContent = known ? pct + '%' : '';
+    }
+    function unbox() { clearInterval(boxTimer); boxTimer = null; const e = $('updBox'); if (e) e.remove(); }
+    function failed() { busy = false; unbox(); toast('Не удалось скачать обновление. Проверьте интернет и попробуйте ещё раз'); }
     window.__onWebUpdate = (r) => {
-      busy = false;
       let o = r;
       if (typeof o === 'string') { try { o = JSON.parse(o); } catch (e) { o = null; } }
-      if (o && o.ok) { toast('Обновление скачано. Перезапускаю…'); if (ST) ST.persist(); setTimeout(() => location.reload(), 600); }
-      else toast('Не удалось скачать обновление. Проверьте интернет и попробуйте ещё раз');
+      if (!(o && o.ok)) { failed(); return; }
+      clearInterval(boxTimer);
+      box('Обновление скачано. Перезапускаю…', 100);
+      if (ST) ST.persist();
+      setTimeout(() => location.reload(), 900);
     };
     window.__onApkUpdate = (r) => {
       let o = r;
       if (typeof o === 'string') { try { o = JSON.parse(o); } catch (e) { o = null; } }
-      if (!o) return;
-      if (o.state === 'progress') toast(o.pct >= 0 ? `${tr('Скачиваю обновление…')} ${o.pct}%` : 'Скачиваю обновление…');
-      else if (o.state === 'install') { busy = false; toast('Обновление скачано. Нажмите «Установить»'); }
-      else { busy = false; toast('Не удалось скачать обновление. Проверьте интернет и попробуйте ещё раз'); }
+      if (!o || !busy) return;
+      if (o.state === 'progress') box('Скачиваю обновление…', o.pct);
+      else if (o.state === 'install') { busy = false; unbox(); toast('Обновление скачано. Нажмите «Установить»'); }
+      else failed();
     };
     function run() {
       if (!offer || busy) return;
       busy = true;
-      toast('Скачиваю обновление…');
-      const m = offer.m;
-      if (offer.kind === 'apk') B().downloadApk(m.apk.url, m.apk.sha256);
-      else B().downloadWebUpdate(m.web.url, m.web.sha256, m.web.version);
-      setTimeout(() => { busy = false; }, 120000);
+      const m = offer.m, my = offer;
+      if (offer.kind === 'apk') { box('Скачиваю обновление…', 0); B().downloadApk(m.apk.url, m.apk.sha256); }
+      else {
+        // страница маленькая и качается за секунды; оболочка не сообщает ход, поэтому проценты — по времени (до 90%)
+        const t0 = Date.now();
+        box('Скачиваю обновление…', 0);
+        boxTimer = setInterval(() => box('Скачиваю обновление…', Math.min(90, Math.round((Date.now() - t0) / 80))), 200);
+        B().downloadWebUpdate(m.web.url, m.web.sha256, m.web.version);
+      }
+      // ответа нет слишком долго — снимаем окно
+      setTimeout(() => { if (busy && offer === my && $('updBox')) failed(); }, offer.kind === 'apk' ? 600000 : 90000);
     }
     function start() {
       if (!W) return;

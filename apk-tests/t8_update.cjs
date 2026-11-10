@@ -24,7 +24,7 @@ const sheet = (p) => p.evaluate(() => { const s = document.getElementById('sheet
       B.bootOk = (v) => calls.push({ name: 'bootOk', args: [v] });
       B.updateState = () => JSON.stringify({ apk: 8, apkName: '4.1', builtinWeb: ${ver.web}, web: cur(), bad: 0 });
       B.fetchText = (u, id) => { calls.push({ name: 'fetchText', args: [u] }); setTimeout(() => window.__onFetchText(id, window.__MANIFEST ? JSON.stringify(window.__MANIFEST) : null), 50); };
-      B.downloadWebUpdate = (u, sha, v) => { calls.push({ name: 'downloadWebUpdate', args: [u, sha, v] }); localStorage.setItem('__stubWeb', v); localStorage.setItem('__stubWebName', window.__MANIFEST.web.name); setTimeout(() => window.__onWebUpdate(JSON.stringify({ ok: true, version: v })), 80); };
+      B.downloadWebUpdate = (u, sha, v) => { calls.push({ name: 'downloadWebUpdate', args: [u, sha, v] }); localStorage.setItem('__stubWeb', v); localStorage.setItem('__stubWebName', window.__MANIFEST.web.name); setTimeout(() => window.__onWebUpdate(JSON.stringify({ ok: true, version: v })), 1500); };
       B.downloadApk = (u, sha) => { calls.push({ name: 'downloadApk', args: [u, sha] }); setTimeout(() => window.__onApkUpdate(JSON.stringify({ state: 'progress', pct: 40 })), 30); setTimeout(() => window.__onApkUpdate(JSON.stringify({ state: 'install' })), 120); };
     })();`;
   const man = (o) => Object.assign({ format: 1, web: { version: ver.web, name: ver.name, url: 'https://github.com/zlontp98-bit/FieldMap/releases/download/stable/web.html', sha256: 'a'.repeat(64), minApk: 8 },
@@ -60,7 +60,11 @@ const sheet = (p) => p.evaluate(() => { const s = document.getElementById('sheet
   await page.evaluate(() => { Store.data.folders.push({ id: 'F1', name: 'Проверка', color: '#22c55e' }); Store.save(); });
   ok('показано «Доступно обновление 4.1.1»', /Доступно обновление 4\.1\.1.*Проверка обновления.*Обновить.*Позже/.test(await sheet(page)), await sheet(page));
   await page.screenshot({ path: H.SP + '/tests/shots/t8_offer.png' });
-  await page.click('#sheetBox .btn.primary'); await H.sleep(2500);
+  await page.click('#sheetBox .btn.primary'); await H.sleep(900);
+  const boxTxt = await page.evaluate(() => { const e = document.getElementById('updBox'); return e ? e.innerText.replace(/\n+/g, ' | ') : ''; });
+  ok('во время загрузки видно окно с процентами', /Скачиваю обновление….*\d+%.*Не закрывайте приложение/.test(boxTxt), boxTxt);
+  await page.screenshot({ path: H.SP + '/tests/shots/t8_progress.png' });
+  await H.sleep(3200);
   ok('после перезапуска работает новая версия', JSON.stringify(await page.evaluate(() => window.FM_WEB)) === JSON.stringify({ v: ver.web + 1, name: '4.1.1' }), await page.evaluate(() => window.FM_WEB));
   ok('данные на месте', await page.evaluate(() => Store.data.folders.map((f) => f.name).join()) === 'Проверка');
   ok('сообщение «Приложение обновлено»', /Приложение обновлено: версия 4\.1\.1/.test(await H.toastText(page)), await H.toastText(page));
@@ -85,7 +89,7 @@ const sheet = (p) => p.evaluate(() => { const s = document.getElementById('sheet
   ok('общая карта закрыта для старой версии', await page.evaluate(() => Sync.status().state + '|' + Sync.connected() + '|' + Store.data.folders.length) === 'off|false|0', await page.evaluate(() => [Sync.status(), Sync.connected(), Store.data.folders.length]));
   ok('показано «Нужно обновить приложение»', /Нужно обновить приложение/.test(await sheet(page)), await sheet(page));
   await page.screenshot({ path: H.SP + '/tests/shots/t8_must.png' });
-  await page.click('#sheetBox .btn.primary'); await H.sleep(3000);
+  await page.click('#sheetBox .btn.primary'); await H.sleep(4500);
   ok('после обновления общая карта подключилась', await page.evaluate(() => Sync.status().state + '|' + Store.data.folders.map((f) => f.name).join()) === 'online|С сервера', await page.evaluate(() => [Sync.status(), Store.data.folders]));
   ok('ошибок нет', !page.errors.length, page.errors);
   await page.context().close();

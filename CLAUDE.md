@@ -104,7 +104,7 @@ fieldmap2/
   versionCode/versionName и `minApk`), port.py/bundle.py, архив, push. `actions_run_trigger` `build-apk.yml` c
   `inputs: {channel: test}` (или без inputs) → релиз `latest`: пользователь проверяет на своём телефоне с включёнными
   «Пробными версиями». По команде «выпускай всем» — тот же запуск с `inputs: {channel: stable}`.
-  Номер `web` только растёт; `web` ≥ versionCode не обязательно, это разные счётчики (сейчас web 9 «4.1.1» — пробное обновление в `latest` для проверки на телефоне пользователя; versionCode 8).
+  Номер `web` только растёт; `web` ≥ versionCode не обязательно, это разные счётчики (сейчас web 10 «4.1.2» в `latest` — окно загрузки обновления `#updBox`; versionCode 8; `stable` ещё не выпускался).
 
 ## Защита работы (с 4.1) — store.js
 
