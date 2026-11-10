@@ -126,7 +126,8 @@ fieldmap2/
 Шаги:
 1. Взять страницу прототипа, убрать фото Бузаллы (`<img id="bgImg">` base64 ~0,5 МБ) и сетку; заново встроить то, что есть
    в старой странице APK: `<script>` firebase-config/store/kml/sync, `loadData/saveData` через Store, статус и код общей
-   карты (Sync), подложка Google/CARTO (`lyrs=`), AndroidBridge (`shareFile`, `shareText`, `openMap`, `takeShared`,
+   карты (Sync), подложка Google/CARTO (`lyrs=`), GPS — кнопка ◎ `fabGps` (`gpsButton`, `watchPosition`, точка «я здесь»
+   следует за человеком; в прототипе заглушка `notYet('GPS')`), AndroidBridge (`shareFile`, `shareText`, `openMap`, `takeShared`,
    `requestLocationPermission`), `__onBack`, `__onLocationPermission`, `__onSharedLocation`, импорт/экспорт KML и данных.
    Найти по старой странице: `grep -n "Store\.\|SY\b\|AndroidBridge\|__on\|lyrs=\|Kml\." index.html`.
 2. store.js/sync.js: фото у маркеров **и линий** теперь объекты `{id, lat, lng, t, by, gps?, src?}` (старые — строки).
