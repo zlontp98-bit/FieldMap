@@ -74,6 +74,26 @@ APK_CSS = '''/* ---- только в приложении: общая карта
 .tr-row .tr-txt b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tr-btn{flex:none;border:0;border-radius:10px;padding:9px 12px;background:rgba(59,130,246,.18);color:#93c5fd;font:600 14px system-ui,sans-serif}
 .tr-btn:active{background:rgba(59,130,246,.3)}
+/* камера внутри приложения */
+.cam-box{position:fixed;inset:0;z-index:6000;background:#000;color:#fff;font:15px system-ui,sans-serif;overflow:hidden}
+.cam-box video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.cam-box.flash video{opacity:.35;transition:opacity .15s}
+.cam-top{position:absolute;left:0;right:0;top:0;padding:calc(10px + env(safe-area-inset-top,0px)) 12px 10px;display:flex;align-items:center;gap:10px;background:linear-gradient(rgba(0,0,0,.6),transparent)}
+.cam-x{width:44px;height:44px;border:0;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;display:grid;place-items:center;flex:none}
+.cam-x .ic svg{stroke:#fff}
+.cam-title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 3px #000}
+.cam-gps{position:absolute;left:12px;right:12px;bottom:calc(214px + env(safe-area-inset-bottom,0px));text-align:center;font-weight:650;font-size:14px}
+.cam-gps:empty{display:none}
+.cam-gps{padding:7px 10px;border-radius:10px;background:rgba(0,0,0,.5)}
+.cam-gps.good{color:#4ade80}.cam-gps.fair{color:#fbbf24}.cam-gps.bad{color:#f87171}
+.cam-info{position:absolute;left:12px;bottom:calc(122px + env(safe-area-inset-bottom,0px));max-width:calc(100% - 100px);padding:6px 10px;background:rgba(0,0,0,.42);font-size:16px;line-height:1.35;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.cam-dir{position:absolute;right:14px;bottom:calc(126px + env(safe-area-inset-bottom,0px));text-align:center;filter:drop-shadow(0 1px 2px rgba(0,0,0,.7))}
+.cam-dir svg{display:block;margin:0 auto;transition:transform .2s linear}
+.cam-dir b{display:block;font-size:20px;font-weight:700;margin-top:2px}
+.cam-bar{position:absolute;left:0;right:0;bottom:0;height:calc(108px + env(safe-area-inset-bottom,0px));display:flex;justify-content:center;align-items:flex-start;padding-top:16px;background:rgba(0,0,0,.55)}
+.cam-shot{width:76px;height:76px;border-radius:50%;border:5px solid #fff;background:#fbbf24;box-shadow:0 0 0 3px rgba(0,0,0,.4)}
+.cam-shot:active{transform:scale(.93)}
+.cam-shot:disabled{opacity:.5}
 /* окно загрузки обновления */
 .upd-box{position:fixed;inset:0;z-index:5000;display:grid;place-items:center;background:rgba(0,0,0,.55)}
 .upd-card{width:min(300px,82vw);padding:22px 20px 18px;border-radius:20px;background:#1c1f26;color:#fff;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.5);font:15px system-ui,sans-serif}
@@ -248,6 +268,18 @@ T = [
     ('Firebase не пускает к списку участников: опубликуйте переходные правила Firestore (весь текст целиком) и перезапустите приложение',
      'Firebase non consente l’elenco dei partecipanti: pubblica le regole Firestore di transizione (tutto il testo) e riavvia l’app',
      'Firebase does not allow the member list: publish the transition Firestore rules (the whole text) and restart the app'),
+    ('Ищу GPS…', 'Cerco il GPS…', 'Looking for GPS…'),
+    ('Нет доступа к GPS', 'Nessun accesso al GPS', 'No access to GPS'),
+    ('точно', 'preciso', 'accurate'),
+    ('почти точно', 'quasi preciso', 'almost accurate'),
+    ('ждите, GPS уточняется', 'attendi, il GPS si sta precisando', 'wait, GPS is improving'),
+    ('Координаты: ищу GPS…', 'Coordinate: cerco il GPS…', 'Coordinates: looking for GPS…'),
+    ('Ожидание адреса из интернета…', 'In attesa dell’indirizzo da internet…', 'Waiting for the address from the internet…'),
+    ('Нет интернета — адрес не определить', 'Niente internet: indirizzo non disponibile', 'No internet — the address is unavailable'),
+    ('Снять', 'Scatta', 'Take photo'),
+    ('Камера ещё не готова', 'La fotocamera non è ancora pronta', 'The camera is not ready yet'),
+    ('Нет доступа к камере', 'Nessun accesso alla fotocamera', 'No access to the camera'),
+    ('Не удалось сохранить фото', 'Impossibile salvare la foto', 'Could not save the photo'),
     ('Не закрывайте приложение', 'Non chiudere l’app', 'Do not close the app'),
     ('Приложение обновлено: версия', 'App aggiornata: versione', 'App updated: version'),
     ('Приложение', 'App', 'App'),
@@ -628,6 +660,31 @@ rep("""    placeIn.addEventListener('change', () => { setPlace(day, placeIn.valu
         note.textContent = tr(v ? 'Определено по первому маркеру дня. Можно исправить вручную' : 'Не удалось определить место: нет интернета');
       });
     }""")
+
+# ---------------------------------------------------------------- камера внутри приложения (CAM в app_part.js)
+# подпись: на строке координат — точность GPS и направление съёмки
+rep("""          const lines = [fmtStamp(info.t), `${info.at[0].toFixed(5)}, ${info.at[1].toFixed(5)}`, info.place].filter(Boolean);""",
+    """          const lines = [fmtStamp(info.t), `${info.at[0].toFixed(5)}, ${info.at[1].toFixed(5)}` + (info.acc ? ` ±${Math.round(info.acc)} м` : '') + (info.dir ? `  ${info.dir}` : ''), info.place].filter(Boolean);""")
+rep("""  function takePhoto(it, kind) {
+    if (!canEditIn(it.folderId)) { noRights(); return; }
+""", """  function takePhoto(it, kind) {
+    if (!canEditIn(it.folderId)) { noRights(); return; }
+    if (CAM.ok() && !takePhoto.native) {
+      CAM.open(it, kind, (p) => {
+        it.photos = it.photos || [];
+        it.photos.push(p);
+        commit();
+        closeMSheet();
+        openViewer(it.photos, it.photos.length - 1, it);
+        toast(p.gps ? 'Фото сохранено' : 'Фото сохранено. Место — по карте (нет GPS)');
+      }, () => { takePhoto.native = true; try { takePhoto(it, kind); } finally { takePhoto.native = false; } });
+      return;
+    }
+""")
+rep("""        h('label', { class: 'pg-row accent add', onpointerdown: () => { camFix = gpsOnce(); } },""",
+    """        CAM.ok() ? h('button', { type: 'button', class: 'pg-row accent add', onclick: () => CAM.open(d, 'm', (p) => { d.photos.push(p); redraw(); if (persist) persist(); }, () => cam.click()) },
+          ico('camera'), h('span', { text: 'Снять фото' })) :
+        h('label', { class: 'pg-row accent add', onpointerdown: () => { camFix = gpsOnce(); } },""")
 
 # ---------------------------------------------------------------- PDF: «Поделиться» и «Сохранить» через AndroidBridge
 rep("""    const blob = new Blob([pdf], { type: 'application/pdf' });

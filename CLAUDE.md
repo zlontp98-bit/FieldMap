@@ -104,7 +104,7 @@ fieldmap2/
   versionCode/versionName и `minApk`), port.py/bundle.py, архив, push. `actions_run_trigger` `build-apk.yml` c
   `inputs: {channel: test}` (или без inputs) → релиз `latest`: пользователь проверяет на своём телефоне с включёнными
   «Пробными версиями». По команде «выпускай всем» — тот же запуск с `inputs: {channel: stable}`.
-  Номер `web` только растёт; `web` ≥ versionCode не обязательно, это разные счётчики (сейчас web 11 «4.1.3» в `latest`; versionCode 8; `stable` ещё не выпускался).
+  Номер `web` только растёт; `web` ≥ versionCode не обязательно, это разные счётчики (сейчас web 12 «4.2», versionCode 9, minApk 9 — в `latest`; `stable` ещё не выпускался).
 
 ## Защита работы (с 4.1) — store.js
 
@@ -135,13 +135,23 @@ fieldmap2/
   поставленный маркер (по журналу), иначе начало линии со слоем; «город, район» через `GEO.place`, сохраняется в
   `S.reportAuto[день]` (личное). Вписанное вручную (`S.reportPlace`) главнее.
 
+## Камера внутри приложения (с 4.2) — `CAM` в app_part.js
+
+- getUserMedia (задняя камера) на весь экран; вживую: точность GPS («±7 м — точно», цвет), дата, координаты, адрес
+  (`GEO.address`, заново при сдвиге > 12 м, «Ожидание адреса из интернета…»), компас (deviceorientationabsolute,
+  направление задней камеры по матрице поворота). Снимок — кадр видео + `stampPhoto` (на строке координат ±точность
+  и направление «ЮЗ 225°»). Нет getUserMedia, доступа или APK < 9 — старый путь `<input capture>` (приложение камеры).
+- Оболочка 9: разрешение CAMERA, `onPermissionRequest` (VIDEO_CAPTURE → запрос CAMERA); `openCamera()` для старого пути
+  тоже сначала просит CAMERA (с объявленным разрешением ACTION_IMAGE_CAPTURE без него падает).
+- Проверка: `apk-tests/t9_camera.cjs` (Chromium с фальшивой камерой, настоящий OpenStreetMap через прокси).
+
 ## Сборка APK
 
 - Android SDK в этой среде нет; APK собирает GitHub Actions (`.github/workflows/build-apk.yml`): сам при push в `main`
   и вручную `actions_run_trigger` (`run_workflow`, `build-apk.yml`, ref = ветка). ~1–2 минуты, кладёт APK в релиз
   **`latest`** (заменяет предыдущий). Скачать `https://github.com/zlontp98-bit/FieldMap/releases/download/latest/FieldMap.apk`
   через curl, сверить sha256 с digest релиза и отправить файлом (SendUserFile).
-- Перед каждой новой сборкой APK поднимать `versionCode`/`versionName` в `app/build.gradle` (сейчас 8 / 4.1);
+- Перед каждой новой сборкой APK поднимать `versionCode`/`versionName` в `app/build.gradle` (сейчас 9 / 4.2);
   если менялась только страница — достаточно `web/version.json` (см. «Обновление без APK»).
   Подпись — `app/debug.keystore` (одинаковая, ставится поверх; SHA-1 `F9:83:10:43:CB:EF:30:93:34:75:66:59:DD:41:38:EC:96:01:7E:3D`).
 - Сайты Google теперь открыты (dl.google.com, gstatic, firestore): MainActivity проверяется `javac` против

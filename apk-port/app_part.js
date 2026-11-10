@@ -371,6 +371,7 @@
 
   // ---------- кнопка «Назад» Android (MainActivity.onBackPressed): true — страница закрыла что-то сама ----------
   window.__onBack = () => {
+    if (CAM.isOpen) { CAM.close(); return true; }
     if (!$('viewer').classList.contains('hidden')) { closeViewer(); return true; }
     if ($('schemaActs')) { closeSchemaActs(); return true; }
     if (!$('sheet').classList.contains('hidden')) { closeSheet(); return true; }
@@ -489,6 +490,134 @@
     autoBusy[ds] = p;
     return p;
   }
+
+  // ---------- камера внутри приложения: на экране вживую дата, координаты с точностью GPS, адрес и компас ----------
+  // Снимок — кадр с камеры, на него впечатывается ровно то, что было на экране в момент съёмки.
+  // Нет камеры или доступа к ней — открывается приложение камеры телефона, как раньше.
+  const CAM = (() => {
+    let el = null, stream = null, timer = null, target = null, onShot = null, heading = null, addr = { at: null, text: '', busy: false, t: 0 };
+    const DIRS = { ru: ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ'], it: ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'], en: ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] };
+    const dirName = (h) => (DIRS[LANG] || DIRS.ru)[Math.round(h / 45) % 8];
+    function ok() {
+      if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) return false;
+      const B = window.AndroidBridge;
+      if (!B || !B.updateState) return true;
+      try { return (JSON.parse(B.updateState()).apk || 0) >= 9; } catch (e) { return false; }
+    }
+    // куда смотрит задняя камера (0 — север, по часовой), по положению телефона
+    function onOrient(e) {
+      let h = null;
+      if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;
+      else if (e.alpha != null && (e.absolute || e.type === 'deviceorientationabsolute')) {
+        const r = Math.PI / 180, a = e.alpha * r, b = (e.beta || 0) * r, g = (e.gamma || 0) * r;
+        const cA = Math.cos(a), sA = Math.sin(a), cB = Math.cos(b), sB = Math.sin(b), cG = Math.cos(g), sG = Math.sin(g);
+        // направление «из задней стороны телефона»; телефон лежит плашмя — направление его верха
+        let x = -(cG * sA * sB + cA * sG), y = -(sA * sG - cA * cG * sB);
+        if (Math.hypot(x, y) < 0.35) { x = -cB * sA; y = cA * cB; }
+        h = (Math.atan2(x, y) / r + 360) % 360;
+      }
+      if (h == null || !Number.isFinite(h)) return;
+      heading = heading == null ? h : heading + ((((h - heading) % 360) + 540) % 360 - 180) * 0.3;   // сглаживание
+      heading = (heading + 360) % 360;
+    }
+    const fix = () => (GPS.pos && Date.now() - GPS.t < 15000 ? { lat: GPS.pos[0], lng: GPS.pos[1], acc: GPS.acc } : null);
+    // адрес запрашиваем заново, когда сдвинулись больше чем на 12 м (не чаще раза в 3 секунды)
+    function refreshAddr(f) {
+      if (!f || addr.busy) return;
+      if (addr.at && hav(addr.at, [f.lat, f.lng]) < 12) return;
+      if (Date.now() - addr.t < 3000) return;
+      addr.busy = true; addr.t = Date.now();
+      const at = [f.lat, f.lng];
+      GEO.address(f.lat, f.lng, 8000).then((a) => { addr.busy = false; if (a) { addr.at = at; addr.text = a; } else addr.failed = navigator.onLine === false ? 'net' : 'none'; });
+    }
+    function paint() {
+      if (!el) return;
+      const f = fix();
+      refreshAddr(f);
+      const q = $('camGps');
+      if (!f) { q.className = 'cam-gps bad'; q.textContent = tr(GPS.denied ? 'Нет доступа к GPS' : 'Ищу GPS…'); }
+      else {
+        const acc = Math.round(f.acc || 0), good = acc <= 10, fair = acc <= 25;
+        q.className = 'cam-gps ' + (good ? 'good' : fair ? 'fair' : 'bad');
+        q.textContent = `GPS ±${acc} ${tr('м')} — ${tr(good ? 'точно' : fair ? 'почти точно' : 'ждите, GPS уточняется')}`;
+      }
+      const lines = [fmtStamp(Date.now()), f ? `${f.lat.toFixed(5)}, ${f.lng.toFixed(5)}` : tr('Координаты: ищу GPS…'),
+        addr.at && f && hav(addr.at, [f.lat, f.lng]) < 25 ? addr.text
+          : addr.failed === 'net' ? tr('Нет интернета — адрес не определить') : tr('Ожидание адреса из интернета…')];
+      $('camInfo').replaceChildren(...lines.map((s) => h('div', { text: s })));
+      const c = $('camDir');
+      c.hidden = heading == null;
+      if (heading != null) { c.querySelector('svg').style.transform = `rotate(${-heading}deg)`; c.querySelector('b').textContent = dirName(heading); }
+    }
+    async function open(it, kind, done, fallback) {
+      close();
+      target = { it, kind }; onShot = done;
+      addr = { at: null, text: '', busy: false, t: 0 };
+      el = h('div', { id: 'camBox', class: 'cam-box' },
+        h('video', { id: 'camVideo', autoplay: true, playsinline: true, muted: true }),
+        h('div', { class: 'cam-top' },
+          h('button', { type: 'button', class: 'cam-x', 'aria-label': 'Закрыть', onclick: close }, ico('x')),
+          h('div', { class: 'cam-title', text: [topFolderName(it.folderId), it.name].filter(Boolean).join(' · ') })),
+        h('div', { id: 'camGps', class: 'cam-gps' }),
+        h('div', { id: 'camInfo', class: 'cam-info' }),
+        h('div', { id: 'camDir', class: 'cam-dir', hidden: true },
+          h('span'), h('b')),
+        h('div', { class: 'cam-bar' }, h('button', { type: 'button', id: 'camShot', class: 'cam-shot', 'aria-label': 'Снять' })));
+      el.querySelector('#camDir').firstChild.innerHTML = '<svg viewBox="0 0 24 24" width="38" height="38"><path d="M12 2l6 18-6-4-6 4z" fill="#fff" stroke="#000" stroke-width=".8"/><path d="M12 2l6 18-6-4z" fill="#ef4444"/></svg>';
+      document.body.appendChild(el);
+      $('camShot').onclick = shoot;
+      gpsStart();
+      window.addEventListener('deviceorientationabsolute', onOrient);
+      window.addEventListener('deviceorientation', onOrient);
+      paint();
+      timer = setInterval(paint, 500);
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } } });
+        if (!el) { stream.getTracks().forEach((t) => t.stop()); return; }
+        const v = $('camVideo');
+        v.srcObject = stream;
+        await v.play().catch(() => {});
+      } catch (e) {
+        close();
+        if (fallback) fallback(); else toast('Нет доступа к камере');
+      }
+    }
+    function close() {
+      clearInterval(timer); timer = null;
+      window.removeEventListener('deviceorientationabsolute', onOrient);
+      window.removeEventListener('deviceorientation', onOrient);
+      if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+      if (el) { el.remove(); el = null; }
+    }
+    async function shoot() {
+      const v = $('camVideo');
+      if (!v || !v.videoWidth) { toast('Камера ещё не готова'); return; }
+      const c = document.createElement('canvas');
+      c.width = v.videoWidth; c.height = v.videoHeight;
+      c.getContext('2d').drawImage(v, 0, 0);
+      $('camShot').disabled = true;
+      el.classList.add('flash');
+      const f = fix(), { it, kind } = target, t = Date.now();
+      let at;
+      if (f) at = [f.lat, f.lng];
+      else if (kind === 'l') { const p = lineTapGeo && lineTapGeo.id === it.id ? lineTapGeo.p : [V.lat, V.lng]; const q = snapOnLine(it, p[0], p[1]); at = [q.lat, q.lng]; }
+      else at = [it.lat, it.lng];
+      const place = addr.at && hav(addr.at, at) < 25 ? addr.text : photoPlace(it, kind);
+      const dir = heading != null ? `${dirName(heading)} ${Math.round(heading)}°` : '';
+      const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.92));
+      let p;
+      try {
+        const src = await stampPhoto(blob, { t, at, place, dir, acc: f ? f.acc : null });
+        p = { id: uid(), lat: at[0], lng: at[1], t, by: me().id };
+        if (f) { p.gps = true; if (f.acc) p.acc = Math.round(f.acc); }
+        if (!(await PhotoStore.put(p.id, src))) p.src = src;
+      } catch (e) { close(); toast('Не удалось сохранить фото'); return; }
+      const cb = onShot;
+      close();
+      if (cb) cb(p);
+    }
+    return { ok, open, close, get isOpen() { return !!el; } };
+  })();
 
   // ---------- значок «отправлено»: видно, ушла ли работа на общую карту ----------
   const SYNC_MARK = { ok: 'M9.3 13.6l1.9 1.9 3.6-4', pend: 'M12 16.2v-5.4M9.7 13l2.3-2.4 2.3 2.4', off: 'M10 11.6l4 4M14 11.6l-4 4', wait: '' };
