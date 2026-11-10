@@ -242,6 +242,12 @@ T = [
     ('Не удалось проверить обновление. Проверьте интернет', 'Impossibile controllare gli aggiornamenti. Controlla internet', 'Could not check for updates. Check the internet'),
     ('Обновления работают только в приложении на телефоне', 'Gli aggiornamenti funzionano solo nell’app sul telefono', 'Updates only work in the app on the phone'),
     ('У вас последняя версия', 'Hai l’ultima versione', 'You have the latest version'),
+    ('Определяю место по первому маркеру дня…', 'Cerco il luogo dal primo marcatore del giorno…', 'Finding the place from the first marker of the day…'),
+    ('Определено по первому маркеру дня. Можно исправить вручную', 'Trovato dal primo marcatore del giorno. Si può correggere a mano', 'Found from the first marker of the day. You can correct it'),
+    ('Не удалось определить место: нет интернета', 'Impossibile trovare il luogo: niente internet', 'Could not find the place: no internet'),
+    ('Firebase не пускает к списку участников: опубликуйте переходные правила Firestore (весь текст целиком) и перезапустите приложение',
+     'Firebase non consente l’elenco dei partecipanti: pubblica le regole Firestore di transizione (tutto il testo) e riavvia l’app',
+     'Firebase does not allow the member list: publish the transition Firestore rules (the whole text) and restart the app'),
     ('Не закрывайте приложение', 'Non chiudere l’app', 'Do not close the app'),
     ('Приложение обновлено: версия', 'App aggiornata: versione', 'App updated: version'),
     ('Приложение', 'App', 'App'),
@@ -597,6 +603,31 @@ rep("""    $('vCount').textContent = `${viewer.i + 1} / ${viewer.list.length}`;"
 rep("""    (await PhotoStore.keys()).forEach((k) => { if (!used.has(k)) PhotoStore.del(k); });""",
     """    if (ST && ST.trashPhotoIds) (await ST.trashPhotoIds()).forEach((id) => used.add(id));
     (await PhotoStore.keys()).forEach((k) => { if (!used.has(k)) PhotoStore.del(k); });""")
+
+# ---------------------------------------------------------------- адрес на фото и место в отчёте (OpenStreetMap)
+# третья строка подписи фото — адрес места съёмки; без сети — как раньше, объект и название
+rep("""    const src = await stampPhoto(file, { t, at, place: photoPlace(it, kind) });""",
+    """    const addr = await GEO.address(at[0], at[1], 5000);
+    const src = await stampPhoto(file, { t, at, place: addr || photoPlace(it, kind) });""")
+# место в отчёте: вписанное вручную главнее, иначе — по первому маркеру дня
+rep("""  function placeOf(ds) {
+    const P = S.reportPlace || {};
+    if (P[ds] != null) return P[ds];""", """  function placeOf(ds) {
+    const P = S.reportPlace || {};
+    if (P[ds] != null && P[ds] !== '') return P[ds];
+    const A = S.reportAuto || {};
+    if (A[ds]) return A[ds];""")
+rep("""    placeIn.addEventListener('change', () => { setPlace(day, placeIn.value); if (!edited) fill(); });""",
+    """    placeIn.addEventListener('change', () => { setPlace(day, placeIn.value); if (!edited) fill(); });
+    // место не вписано — определяется само по первому маркеру дня (нужен интернет)
+    if (!(S.reportPlace || {})[day] && d.list.length) {
+      const shown = placeIn.value, note = h('div', { class: 'pg-note', text: 'Определяю место по первому маркеру дня…' });
+      placeIn.after(note);
+      autoPlaceFor(day).then((v) => {
+        if (v && placeIn.value === shown && document.activeElement !== placeIn) { placeIn.value = v; if (!edited) fill(); }
+        note.textContent = tr(v ? 'Определено по первому маркеру дня. Можно исправить вручную' : 'Не удалось определить место: нет интернета');
+      });
+    }""")
 
 # ---------------------------------------------------------------- PDF: «Поделиться» и «Сохранить» через AndroidBridge
 rep("""    const blob = new Blob([pdf], { type: 'application/pdf' });

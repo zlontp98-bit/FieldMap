@@ -274,7 +274,13 @@
     openPage('Участники карты', { onBack: goBack }, [pgSec('Кто работает с этой картой'), box]);
     $('page').dataset.screen = 'members';
     let list;
-    try { list = await SY.members(); } catch (e) { box.replaceChildren(h('div', { class: 'pg-note', text: 'Не удалось загрузить список' })); return; }
+    try { list = await SY.members(); } catch (e) {
+      const why = String((e && e.code) || '').includes('permission-denied')
+        ? 'Firebase не пускает к списку участников: опубликуйте переходные правила Firestore (весь текст целиком) и перезапустите приложение'
+        : String((e && e.message) || e || '');
+      box.replaceChildren(h('div', { class: 'pg-note', text: 'Не удалось загрузить список' }), h('div', { class: 'pg-note', style: 'opacity:.75', text: why }));
+      return;
+    }
     if ($('page').dataset.screen !== 'members') return;
     if (!list.length) { box.replaceChildren(h('div', { class: 'pg-note', text: 'Список пока пуст: участник появляется, когда входит в карту' })); return; }
     list.sort((a, b) => (b.role === 'owner') - (a.role === 'owner') || String(a.name || '').localeCompare(String(b.name || '')));
@@ -385,6 +391,104 @@
     if (clearSelection()) { draw(); return true; }
     return false;
   };
+
+  // ---------- адрес по координатам (OpenStreetMap, нужен интернет) ----------
+  // Nominatim: не чаще раза в секунду (правило сервиса), ответы запоминаются на телефоне; запасной — Photon (komoot)
+  const GEO = (() => {
+    const KEY = 'fieldmap_geo', MAX = 400;
+    let cache = {};
+    try { cache = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { cache = {}; }
+    const save = () => {
+      const ks = Object.keys(cache);
+      if (ks.length > MAX) ks.sort((a, b) => cache[a].t - cache[b].t).slice(0, ks.length - MAX).forEach((k) => delete cache[k]);
+      try { localStorage.setItem(KEY, JSON.stringify(cache)); } catch (e) { /* ignore */ }
+    };
+    let queue = Promise.resolve(), lastAt = 0;
+    const lang = () => (LANG === 'ru' ? 'it' : LANG);   // названия улиц — как на месте
+    const timed = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(() => r(null), ms))]);
+    async function fetchJson(url) {
+      const r = await fetch(url, { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }
+    // { road, house, quarter, city } или null
+    function ask(lat, lng) {
+      const run = async () => {
+        const wait = 1100 - (Date.now() - lastAt);
+        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+        lastAt = Date.now();
+        try {
+          const j = await fetchJson(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&accept-language=${lang()}&lat=${lat}&lon=${lng}`);
+          const a = j && j.address;
+          if (a) return { road: a.road || a.pedestrian || a.footway || a.path || a.square || '', house: a.house_number || '',
+            quarter: a.suburb || a.quarter || a.neighbourhood || a.city_district || a.hamlet || '',
+            city: a.city || a.town || a.village || a.municipality || a.county || '' };
+        } catch (e) { /* ниже — запасной сервис */ }
+        try {
+          const j = await fetchJson(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}`);
+          const a = j && j.features && j.features[0] && j.features[0].properties;
+          if (a) return { road: a.street || '', house: a.housenumber || '', quarter: a.locality || a.district || '', city: a.city || a.county || '' };
+        } catch (e) { /* без сети */ }
+        return null;
+      };
+      const p = queue.then(run, run);
+      queue = p.catch(() => null);
+      return p;
+    }
+    async function get(lat, lng) {
+      const k = lat.toFixed(4) + ',' + lng.toFixed(4) + ':' + lang();
+      if (cache[k]) return cache[k].a;
+      if (navigator.onLine === false) return null;
+      const a = await ask(+lat.toFixed(6), +lng.toFixed(6));
+      if (a && (a.road || a.city)) { cache[k] = { t: Date.now(), a }; save(); }
+      return a;
+    }
+    return {
+      // «Via Borzoli 12, Borzoli, Genova» — для подписи фото
+      async address(lat, lng, ms) {
+        const a = await timed(get(lat, lng).catch(() => null), ms || 6000);
+        if (!a) return '';
+        const road = [a.road, a.house].filter(Boolean).join(' ');
+        return [road, a.quarter && a.quarter !== a.city ? a.quarter : '', a.city].filter(Boolean).join(', ');
+      },
+      // «Genova, Borzoli» — для места в отчёте
+      async place(lat, lng, ms) {
+        const a = await timed(get(lat, lng).catch(() => null), ms || 8000);
+        if (!a) return '';
+        return [a.city, a.quarter && a.quarter !== a.city ? a.quarter : ''].filter(Boolean).join(', ');
+      },
+    };
+  })();
+
+  // место для отчёта за день: по первому маркеру, поставленному в этот день, в каждом объекте,
+  // где была работа (если маркеров не ставили — по началу линии, где тянули кабель или трубку)
+  const autoBusy = {};
+  function autoPlaceFor(ds) {
+    if (autoBusy[ds]) return autoBusy[ds];
+    const p = (async () => {
+      const next = shiftDay(ds, 1);
+      const day = (S.log || []).filter((e) => e.t >= ds && e.t < next).sort((a, b) => a.t - b.t);
+      const first = new Map();   // объект → [lat, lng]
+      day.forEach((e) => {
+        if (e.cnt === undefined || e.cnt <= 0) return;
+        const m = S.markers.find((x) => 'm:' + x.id === e.id);
+        if (m && !first.has(topFolderId(m.folderId))) first.set(topFolderId(m.folderId), [m.lat, m.lng]);
+      });
+      day.forEach((e) => {
+        if (e.cnt !== undefined) return;
+        const l = S.lines.find((x) => (x.layers || []).some((ly) => ly.id === e.id));
+        if (l && l.points && l.points.length && !first.has(topFolderId(l.folderId))) first.set(topFolderId(l.folderId), l.points[0]);
+      });
+      if (!first.size) return '';
+      const names = [];
+      for (const [lat, lng] of first.values()) { const n = await GEO.place(lat, lng); if (n && !names.includes(n)) names.push(n); }
+      const v = names.join('; ').slice(0, 80);
+      if (v) { if (!S.reportAuto || typeof S.reportAuto !== 'object') S.reportAuto = {}; S.reportAuto[ds] = v; saveData(); }
+      return v;
+    })().finally(() => { delete autoBusy[ds]; });
+    autoBusy[ds] = p;
+    return p;
+  }
 
   // ---------- значок «отправлено»: видно, ушла ли работа на общую карту ----------
   const SYNC_MARK = { ok: 'M9.3 13.6l1.9 1.9 3.6-4', pend: 'M12 16.2v-5.4M9.7 13l2.3-2.4 2.3 2.4', off: 'M10 11.6l4 4M14 11.6l-4 4', wait: '' };
