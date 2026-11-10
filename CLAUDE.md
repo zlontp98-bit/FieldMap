@@ -104,7 +104,7 @@ fieldmap2/
   versionCode/versionName и `minApk`), port.py/bundle.py, архив, push. `actions_run_trigger` `build-apk.yml` c
   `inputs: {channel: test}` (или без inputs) → релиз `latest`: пользователь проверяет на своём телефоне с включёнными
   «Пробными версиями». По команде «выпускай всем» — тот же запуск с `inputs: {channel: stable}`.
-  Номер `web` только растёт; `web` ≥ versionCode не обязательно, это разные счётчики (сейчас web 12 «4.2», versionCode 9, minApk 9 — в `latest`; `stable` ещё не выпускался).
+  Номер `web` только растёт; `web` ≥ versionCode не обязательно, это разные счётчики (сейчас web 13 «4.2.1», versionCode 9, minApk 9 — в `latest`; `stable` ещё не выпускался). «Слои карты» считают цифры по активному объекту (`statFolders`).
 
 ## Защита работы (с 4.1) — store.js
 

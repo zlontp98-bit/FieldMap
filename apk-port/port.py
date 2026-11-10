@@ -74,6 +74,7 @@ APK_CSS = '''/* ---- только в приложении: общая карта
 .tr-row .tr-txt b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tr-btn{flex:none;border:0;border-radius:10px;padding:9px 12px;background:rgba(59,130,246,.18);color:#93c5fd;font:600 14px system-ui,sans-serif}
 .tr-btn:active{background:rgba(59,130,246,.3)}
+.mp-obj{margin:-4px 16px 8px;color:#9aa0a6;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* камера внутри приложения */
 .cam-box{position:fixed;inset:0;z-index:6000;background:#000;color:#fff;font:15px system-ui,sans-serif;overflow:hidden}
 .cam-box video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -268,6 +269,7 @@ T = [
     ('Firebase не пускает к списку участников: опубликуйте переходные правила Firestore (весь текст целиком) и перезапустите приложение',
      'Firebase non consente l’elenco dei partecipanti: pubblica le regole Firestore di transizione (tutto il testo) e riavvia l’app',
      'Firebase does not allow the member list: publish the transition Firestore rules (the whole text) and restart the app'),
+    ('Объект:', 'Cantiere:', 'Site:'),
     ('Ищу GPS…', 'Cerco il GPS…', 'Looking for GPS…'),
     ('Нет доступа к GPS', 'Nessun accesso al GPS', 'No access to GPS'),
     ('точно', 'preciso', 'accurate'),
@@ -685,6 +687,31 @@ rep("""        h('label', { class: 'pg-row accent add', onpointerdown: () => { c
     """        CAM.ok() ? h('button', { type: 'button', class: 'pg-row accent add', onclick: () => CAM.open(d, 'm', (p) => { d.photos.push(p); redraw(); if (persist) persist(); }, () => cam.click()) },
           ico('camera'), h('span', { text: 'Снять фото' })) :
         h('label', { class: 'pg-row accent add', onpointerdown: () => { camFix = gpsOnce(); } },""")
+
+# ---------------------------------------------------------------- «Слои карты»: цифры — только по активному объекту
+rep("""  function layerTotals() {
+    const t = { cable: 0, tube: 0, custom: 0 };
+    S.lines.forEach((l) => { if (!inView(l)) return;""", """  // объект, по которому считаются цифры в «Слоях карты»: активный (вместе с подпапками линий); нет активного — что видно
+  function statFolders() {
+    const a = folderById(S.activeFolderId);
+    if (!a) return null;
+    return new Set(folderTree(topFolderId(a.id)));
+  }
+  const inStat = (fid, set) => (set ? set.has(fid) : inViewFolder(fid));
+  function layerTotals() {
+    const t = { cable: 0, tube: 0, custom: 0 }, st = statFolders();
+    S.lines.forEach((l) => { if (!inStat(l.folderId, st)) return;""")
+rep("""      h('div', { class: 'mp-head', text: tr('Слои карты') }),
+      mapPopRow('markers', markerSampleURL(), tr('Маркеры'), String(S.markers.filter((m) => inViewFolder(m.folderId)).length)),
+      mapPopRow('lines', layerSampleURL('custom', '#a3a3a3'), tr('Линии'), fmtLen(S.lines.filter((l) => inViewFolder(l.folderId)).reduce((a, l) => a + pathLen(l.points || []), 0))),""",
+    """      h('div', { class: 'mp-head', text: tr('Слои карты') }),
+      statFolders() ? h('div', { class: 'mp-obj', text: `${tr('Объект:')} ${topFolderName(S.activeFolderId)}` }) : null,
+      mapPopRow('markers', markerSampleURL(), tr('Маркеры'), String(S.markers.filter((m) => inStat(m.folderId, statFolders())).length)),
+      mapPopRow('lines', layerSampleURL('custom', '#a3a3a3'), tr('Линии'), fmtLen(S.lines.filter((l) => inStat(l.folderId, statFolders())).reduce((a, l) => a + pathLen(l.points || []), 0))),""")
+rep("""    const g = new Map();
+    S.lines.forEach((l) => { if (!inViewFolder(l.folderId)) return; (l.layers || []).forEach((ly) => {""",
+    """    const g = new Map(), st = statFolders();
+    S.lines.forEach((l) => { if (!inStat(l.folderId, st)) return; (l.layers || []).forEach((ly) => {""")
 
 # ---------------------------------------------------------------- PDF: «Поделиться» и «Сохранить» через AndroidBridge
 rep("""    const blob = new Blob([pdf], { type: 'application/pdf' });
