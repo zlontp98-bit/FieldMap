@@ -46,6 +46,42 @@ HEAD = '''<!doctype html>
 rep_re(r'\A<!doctype html><html><head>.*?\n<title>FieldMap прототип</title>\n', HEAD, re.S)
 
 APK_CSS = '''/* ---- только в приложении: общая карта, аккаунт, «Поделиться» ---- */
+/* настройки: группы, цветные значки, переключатели */
+#page[data-screen="settings"] .page-body{padding-top:6px}
+#page[data-screen="settings"] .page-head{background:var(--surf);border-bottom:0}
+#page[data-screen="settings"] .page-head .ibtn:first-child{width:42px;height:42px;border-radius:50%;background:var(--surf-2);border:1px solid var(--hair);font-size:20px}
+#page[data-screen="settings"] .page-head .title{text-align:center;font-size:18px}
+#page[data-screen="settings"] .page-head > span.ibtn{width:42px}
+.st-sec{font-size:13px;color:var(--tx-3);padding:20px 22px 8px;font-weight:600}
+.st-card{background:var(--surf-2);border:1px solid var(--hair);border-radius:20px;margin:0 12px;overflow:hidden}
+.st-prof-card{margin-top:10px}
+.st-row,.st-prof{display:flex;align-items:center;gap:14px;width:100%;min-height:62px;padding:10px 16px;margin:0;border:0;background:transparent;color:var(--tx);font:inherit;text-align:left;position:relative;border-radius:0}
+.st-row + .st-row::before{content:"";position:absolute;top:0;left:62px;right:0;height:1px;background:var(--hair)}
+.st-row:active,.st-prof:active{background:var(--surf-3)}
+.st-ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none;color:#fff}
+.st-ic .ic{width:20px;height:20px;color:#fff;display:grid;place-items:center}
+.st-ic .ic svg{width:20px;height:20px;stroke:#fff}
+.st-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.st-ttl{font-size:16.5px;line-height:1.25}
+.st-ttl.big{font-size:18px;font-weight:650}
+.st-sub{font-size:13px;color:var(--tx-2);line-height:1.3}
+.st-val{color:var(--tx-2);font-size:15px;flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.st-chev{width:20px;height:20px;color:var(--tx-3);flex:none}
+.st-chev svg{width:20px;height:20px}
+.st-sw{width:50px;height:30px;border-radius:15px;background:#3a3f49;flex:none;position:relative;transition:background .2s}
+.st-sw i{position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.4);transition:transform .2s}
+.st-sw.on{background:var(--ok)}
+.st-sw.on i{transform:translateX(20px)}
+.st-prof{min-height:78px}
+.st-ava{width:52px;height:52px;border-radius:50%;flex:none;display:grid;place-items:center;background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;font-size:22px}
+.st-ava.off{background:var(--surf-3)}
+.st-ava .ic{width:26px;height:26px}.st-ava .ic svg{width:26px;height:26px}
+.st-foot{text-align:center;color:var(--tx-3);font-size:12.5px;padding:24px 0 8px}
+.st-in-sheet{margin:6px 0 10px}
+.st-pick{min-height:56px}
+.st-pick + .st-pick::before{left:16px}
+.st-check{width:22px;height:22px;color:var(--acc);flex:none}
+.st-check .ic,.st-check svg{width:22px;height:22px}
 .sync-code{padding:16px;font-size:30px;font-weight:700;letter-spacing:3px;text-align:center;font-variant-numeric:tabular-nums;user-select:text}
 .act-row .ic{width:24px;height:24px;flex:none}
 .act-row .ic svg{width:24px;height:24px}
@@ -309,6 +345,17 @@ T = [
     ('Нет интернета — адрес не определить', 'Niente internet: indirizzo non disponibile', 'No internet — the address is unavailable'),
     ('Снять', 'Scatta', 'Take photo'),
     ('Отметить', 'Segna', 'Mark'),
+    ('Общие', 'Generali', 'General'),
+    ('Обновления', 'Aggiornamenti', 'Updates'),
+    ('Пробные версии', 'Versioni di prova', 'Test versions'),
+    ('Цвет по режиму', 'Colore per fase', 'Colour by stage'),
+    ('Проект — красный, выполнено — зелёный. Меняется только цвет', 'Progetto rosso, eseguito verde. Cambia solo il colore', 'Project red, done green. Only the colour changes'),
+    ('Для Google Earth и других карт', 'Per Google Earth e altre mappe', 'For Google Earth and other maps'),
+    ('Экспорт данных', 'Esporta dati', 'Export data'),
+    ('Объекты, фото, кабели — копия всего', 'Cantieri, foto, cavi: copia di tutto', 'Sites, photos, cables — a copy of everything'),
+    ('Проверить, есть ли новая версия', 'Controlla se c’è una nuova versione', 'Check for a new version'),
+    ('Получать обновления раньше всех (для проверки)', 'Ricevi gli aggiornamenti prima di tutti (per prova)', 'Get updates before everyone (for testing)'),
+    ('Чтобы работать с общей картой', 'Per lavorare sulla mappa condivisa', 'To work on the shared map'),
     ('У фото нет места съёмки — показан маркер', 'La foto non ha il luogo dello scatto: ecco il marcatore', 'The photo has no location — showing the marker'),
     ('У фото нет места съёмки — показана линия', 'La foto non ha il luogo dello scatto: ecco la linea', 'The photo has no location — showing the line'),
     ('Удалить фото', 'Elimina foto', 'Delete photo'),
@@ -615,6 +662,9 @@ rep_re(r"  // поделиться координатами маркера: си
     const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
     const text = `${name}\n${lat}, ${lng}\n${url}`;
     const B = window.AndroidBridge;
+    // в приложении — сразу системное окно «Поделиться» со списком приложений (WhatsApp, Telegram, Карты, копировать…)
+    if (B && B.shareText) { B.shareText(text); return; }
+    if (navigator.share) { navigator.share({ title: name, text }).catch(() => {}); return; }
     openSheet(
       h('h3', { text: name }),
       h('div', { class: 'share-coords', text: `${lat}, ${lng}` }),
@@ -901,6 +951,9 @@ rep("""  function photoWhere() {
     }
     draw();
   }""")
+
+# ---------------------------------------------------------------- новый экран настроек (openSettings2 в app_part.js)
+rep("  function openSettings() {\n", "  function openSettings() { return openSettings2(); }\n  function openSettingsOld() {\n")
 
 open(dst, 'w', encoding='utf-8').write(s)
 print('ok', len(s), s.count('\n'))

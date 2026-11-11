@@ -71,7 +71,7 @@ const sheet = (p) => p.evaluate(() => { const s = document.getElementById('sheet
   ok('окно обновления больше не показано', (await sheet(page)) === '', await sheet(page));
   await page.click('#btnMenu'); await H.sleep(300); await page.click('text=Настройки'); await H.sleep(300);
   const set = (await page.evaluate(() => document.getElementById('pageBody').innerText)).replace(/\n+/g, ' | ');
-  ok('в настройках: Версия 4.1.1 (9)', set.includes(`Версия 4.1.1 (${ver.web + 1})`), set.slice(-220));
+  ok('в настройках: 4.1.1 (9)', set.includes(`FieldMap 4.1.1 (${ver.web + 1})`), set.slice(-220));
   await page.screenshot({ path: H.SP + '/tests/shots/t8_settings.png' });
   await page.click('text=Пробные версии'); await H.sleep(500);
   ok('пробные версии: проверка идёт в релиз latest', (await calls(page, 'fetchText')).some((a) => a[0].endsWith('/download/latest/update.json')), await calls(page, 'fetchText'));

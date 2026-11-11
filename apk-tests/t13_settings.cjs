@@ -1,0 +1,51 @@
+// Новый экран настроек (группы, переключатели, язык) и «Поделиться» маркером — сразу системное окно
+const H = require('./harness.cjs');
+let bad = 0;
+const ok = (l, c, x) => { if (!c) bad++; console.log((c ? '  ок     ' : '  ОШИБКА ') + l + (x !== undefined ? ' — ' + JSON.stringify(x) : '')); };
+(async () => {
+  const url = H.prepareWeb();
+  const browser = await H.launch();
+  const signed = `localStorage.setItem('__stubAuth', JSON.stringify({ uid: 'uidA', google: true, name: 'Мария Иванова', email: 'maria@example.com' }));
+    localStorage.setItem('fieldmap_account', JSON.stringify({ uid: 'uidA', google: true, name: 'Мария Иванова', email: 'maria@example.com', named: true }));`;
+  const { page } = await H.phone(browser, H.makeRelay(), { init: signed });
+  await page.goto(url); await H.sleep(3000);
+  await page.evaluate(() => {
+    const S = Store.data;
+    S.folders.push({ id: 'F', name: 'Объект', color: '#22c55e' });
+    S.markers.push({ id: 'M', folderId: 'F', name: '25', color: '#22c55e', lat: 44.429522, lng: 8.858613, photos: [] });
+    S.activeFolderId = 'F';
+    localStorage.setItem('fieldmap_view', JSON.stringify({ lat: 44.429522, lng: 8.858613, z: 18 }));
+    Store.save();
+  });
+  await page.reload(); await H.sleep(1200);
+  await page.click('#btnMenu'); await H.sleep(300); await page.click('text=Настройки'); await H.sleep(400);
+  await page.screenshot({ path: H.SP + '/tests/shots/t13_settings.png' });
+  await page.evaluate(() => { document.getElementById('pageBody').scrollTop = 1e4; }); await H.sleep(200);
+  await page.screenshot({ path: H.SP + '/tests/shots/t13_settings2.png' });
+  const txt = await page.evaluate(() => document.getElementById('pageBody').innerText.replace(/\n+/g, ' | '));
+  ok('профиль: имя и почта', txt.includes('Мария Иванова') && txt.includes('maria@example.com'), txt.slice(0, 80));
+  ok('группы на месте', ['Общие', 'Карта', 'Данные', 'Приложение'].every((g) => txt.toUpperCase().includes(g.toUpperCase())), txt);
+  ok('нет кнопки 💾 в заголовке', await page.evaluate(() => !document.querySelector('#pageHead [aria-label="Сохранить"]')));
+  const lab0 = await page.evaluate(() => document.querySelectorAll('.st-sw')[0].classList.contains('on'));
+  await page.click('.st-row:has-text("Подписи маркеров")'); await H.sleep(300);
+  const lab1 = await page.evaluate(() => document.querySelectorAll('.st-sw')[0].classList.contains('on'));
+  ok('переключатель «Подписи маркеров» меняется', lab0 !== lab1, [lab0, lab1]);
+  await page.click('.st-row:has-text("Язык")'); await H.sleep(300);
+  await page.screenshot({ path: H.SP + '/tests/shots/t13_lang.png' });
+  await page.click('.st-pick:has-text("Italiano")'); await H.sleep(400);
+  const it = await page.evaluate(() => document.getElementById('pageBody').innerText);
+  ok('язык сменился на итальянский, экран остался', /Generali/i.test(it) && /Italiano/.test(it), it.slice(0, 160));
+  await page.click('.st-pick:has-text("Русский")').catch(() => {});
+  await page.click('.st-row:has-text("Lingua")'); await H.sleep(300); await page.click('.st-pick:has-text("Русский")'); await H.sleep(300);
+  // поделиться маркером
+  await page.click('#pageHead [aria-label="Назад"]'); await H.sleep(300);
+  await page.evaluate(() => window.__onBack()); await H.sleep(300);
+  await page.mouse.click(206, 430 - 22); await H.sleep(600);
+  await page.click('#mSheet .tb-item:has-text("Поделиться")'); await H.sleep(400);
+  const calls = await page.evaluate(() => window.__bridgeCalls.filter((c) => c.name === 'shareText').map((c) => c.args[0]));
+  ok('сразу системное «Поделиться» (shareText)', calls.length === 1 && calls[0].includes('44.429522, 8.858613') && calls[0].includes('google.com/maps'), calls);
+  ok('своего окна с кнопками нет', await page.evaluate(() => document.getElementById('sheet').classList.contains('hidden')));
+  ok('ошибок нет', !page.errors.length, page.errors);
+  console.log(bad ? `\nОШИБОК: ${bad}` : '\nВСЕ ПРОВЕРКИ ПРОШЛИ');
+  await browser.close(); process.exit(bad ? 1 : 0);
+})().catch((e) => { console.error(e); process.exit(2); });

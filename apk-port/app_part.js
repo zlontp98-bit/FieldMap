@@ -1127,6 +1127,61 @@
   })();
 
   // ---------- запуск части приложения: проверка версии, общая карта, вход, GPS, присланная точка ----------
+  // ---------- настройки: группы с цветными значками, переключатели (как в настройках телефона) ----------
+  ICONS.globe = '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.8 3.8 5.8 3.8 9s-1.2 6.2-3.8 9c-2.6-2.8-3.8-5.8-3.8-9S9.4 5.8 12 3z"/>';
+  ICONS.flask = '<path d="M9 3h6M10 3v6L4.5 18.5A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.5-2.5L14 9V3"/><path d="M7 15h10"/>';
+  const ST_CHEV = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function stRow({ icon, color, title, sub, value, on, onclick, cls }) {
+    const right = [];
+    if (value) right.push(h('span', { class: 'st-val', text: value }));
+    if (on === undefined) { const c = h('span', { class: 'st-chev' }); c.innerHTML = ST_CHEV; right.push(c); }
+    else right.push(h('span', { class: 'st-sw' + (on ? ' on' : ''), role: 'switch', 'aria-checked': on ? 'true' : 'false' }, h('i')));
+    return h('button', { type: 'button', class: 'st-row' + (cls ? ' ' + cls : ''), onclick },
+      h('span', { class: 'st-ic', style: `background:${color}` }, ico(icon)),
+      h('span', { class: 'st-txt' }, h('span', { class: 'st-ttl', text: title }), sub ? h('span', { class: 'st-sub', text: sub }) : null),
+      ...right);
+  }
+  const stGroup = (title, ...rows) => [title ? h('div', { class: 'st-sec', text: title }) : null, h('div', { class: 'st-card' }, ...rows.flat().filter(Boolean))];
+  function chooseLang() {
+    openSheet(h('h3', { text: tr('Язык') }), h('div', { class: 'st-card st-in-sheet' },
+      LANGS.map((code) => h('button', { type: 'button', class: 'st-row st-pick' + (LANG === code ? ' sel' : ''), onclick: () => { closeSheet(); setLang(code); } },
+        h('span', { class: 'st-txt' }, h('span', { class: 'st-ttl', text: LANG_NAMES[code] })), h('span', { class: 'st-check' }, LANG === code ? ico('check') : null)))),
+      h('button', { class: 'btn ghost', text: 'Отмена', onclick: closeSheet }));
+  }
+  function openSettings2() {
+    const body = $('pageBody'), keep = pageIsOpen() && $('page').dataset.screen === 'settings' ? body.scrollTop : 0;
+    const again = () => openSettings2();
+    const google = !!(AU && AU.google());
+    const who = google ? me() : null, mail = google && AU.user ? AU.user.email : '';
+    const prof = h('button', { type: 'button', class: 'st-prof', onclick: () => { closePage(); if (google) openAccount(); else signInFlow(); } },
+      h('span', { class: 'st-ava' + (google ? '' : ' off') }, google ? h('b', { text: (who.name || '?').trim().charAt(0).toUpperCase() }) : ico('user')),
+      h('span', { class: 'st-txt' },
+        h('span', { class: 'st-ttl big', text: google ? who.name : tr('Войти через Google') }),
+        h('span', { class: 'st-sub', text: google ? (mail || tr('Аккаунт')) : tr('Чтобы работать с общей картой') })));
+    const ch = h('span', { class: 'st-chev' }); ch.innerHTML = ST_CHEV; prof.append(ch);
+    openPage('Настройки', { onBack: () => { closePage(); openDrawer(); } }, [
+      h('div', { class: 'st-card st-prof-card' }, prof),
+      stGroup(tr('Общие'),
+        stRow({ icon: 'globe', color: '#3b82f6', title: tr('Язык'), value: LANG_NAMES[LANG], onclick: chooseLang })),
+      stGroup(tr('Карта'),
+        stRow({ icon: 'tag', color: '#f59e0b', title: tr('Подписи маркеров'), on: labelsOn, onclick: () => { toggleLabels(); again(); } }),
+        stRow({ icon: 'bucket', color: '#22c55e', title: tr('Цвет по режиму'), sub: tr('Проект — красный, выполнено — зелёный. Меняется только цвет'),
+          on: autoColorOn(), onclick: () => { S.autoColor = !autoColorOn(); applyAutoColor(); saveData(); again(); } })),
+      stGroup(tr('Данные'),
+        stRow({ icon: 'import', color: '#8b5cf6', title: tr('Импорт данных или KML'), onclick: importFile }),
+        stRow({ icon: 'map', color: '#14b8a6', title: tr('Экспорт KML'), sub: tr('Для Google Earth и других карт'), onclick: exportKml }),
+        stRow({ icon: 'export', color: '#6366f1', title: tr('Экспорт данных'), sub: tr('Объекты, фото, кабели — копия всего'), onclick: exportData }),
+        ST ? stRow({ icon: 'trash', color: '#ef4444', title: tr('Корзина'), sub: tr('Удалённое можно вернуть в течение 30 дней'), onclick: () => { closePage(); openTrash(); } }) : null),
+      stGroup(tr('Приложение'),
+        stRow({ icon: 'cloud', color: '#0ea5e9', title: tr('Обновления'), sub: tr('Проверить, есть ли новая версия'), value: UPD.version() === '—' ? '' : UPD.version().replace(/ \(\d+\)$/, ''), onclick: () => UPD.check(true) }),
+        stRow({ icon: 'flask', color: '#64748b', title: tr('Пробные версии'), sub: tr('Получать обновления раньше всех (для проверки)'),
+          on: UPD.channel() === 'test', onclick: () => { UPD.setChannel(UPD.channel() === 'test' ? 'stable' : 'test'); again(); } })),
+      UPD.version() === '—' ? null : h('div', { class: 'st-foot', text: `FieldMap ${UPD.version()}` }),
+    ]);
+    $('page').dataset.screen = 'settings';
+    body.scrollTop = keep;
+  }
+
   function appStart() {
     UPD.start();
     $('tbSync').onclick = syncChipTap;
