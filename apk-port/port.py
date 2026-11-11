@@ -53,6 +53,7 @@ APK_CSS = '''/* ---- только в приложении: общая карта
 .row.pinned{border-color:rgba(245,158,11,.35)}
 .d-pinsep{height:1px;background:var(--hair);margin:4px 6px 10px}
 .fm-ttl{display:flex;align-items:center;gap:10px}
+.st-row.st-danger .st-ttl{color:#f87171}
 .fm-ttl > :first-child{width:28px;height:28px;flex:none}
 #page[data-screen="settings"] .page-head{background:var(--surf);border-bottom:0}
 #page[data-screen="settings"] .page-head .ibtn:first-child{width:42px;height:42px;border-radius:50%;background:var(--surf-2);border:1px solid var(--hair);font-size:20px}
@@ -357,6 +358,12 @@ T = [
     ('Объект закреплён', 'Cantiere fissato in alto', 'Site pinned'),
     ('Объект откреплён', 'Cantiere sbloccato', 'Site unpinned'),
     ('Настройки объекта', 'Impostazioni del cantiere', 'Site settings'),
+    ('Переименовать', 'Rinomina', 'Rename'),
+    ('Переименовать объект', 'Rinomina il cantiere', 'Rename the site'),
+    ('Название сохранено', 'Nome salvato', 'Name saved'),
+    ('Впишите название', 'Scrivi il nome', 'Type a name'),
+    ('Объект удалён. Вернуть можно в «Корзине»', 'Cantiere eliminato. Si può recuperare dal «Cestino»', 'Site deleted. You can restore it from the “Trash”'),
+    ('Объект удалён', 'Cantiere eliminato', 'Site deleted'),
     ('Закреплено', 'Fissato', 'Pinned'),
     ('Общие', 'Generali', 'General'),
     ('Обновления', 'Aggiornamenti', 'Updates'),

@@ -43,10 +43,24 @@ const ok = (l, c, x) => { if (!c) bad++; console.log((c ? '  ок     ' : '  О�
   ok('у закреплённого — «Открепить»', await page.evaluate(() => /Открепить/.test(document.getElementById('sheetBox').innerText)));
   await page.click('#sheetBox .st-row:has-text("Открепить")'); await H.sleep(400);
   ok('открепили — вернулся на место', JSON.stringify(await names()) === JSON.stringify(['Borzoli 116', 'Cliente Sestri', 'Via Pillea']), await names());
-  // настройки объекта из того же окна
+  // переименовать прямо из окна удержания
   await hold('Cliente Sestri');
-  await page.click('#sheetBox .st-row:has-text("Настройки объекта")'); await H.sleep(500);
-  ok('«Настройки объекта» открывают редактирование', await page.evaluate(() => !document.getElementById('page').classList.contains('hidden')));
+  await page.screenshot({ path: H.SP + '/tests/shots/t14_menu2.png' });
+  ok('в окне: Закрепить, Переименовать, Удалить объект', await page.evaluate(() => ['Закрепить наверху', 'Переименовать', 'Удалить объект'].every((t) => document.getElementById('sheetBox').innerText.includes(t))));
+  await page.click('#sheetBox .st-row:has-text("Переименовать")'); await H.sleep(300);
+  await page.fill('#sheetBox input.field', 'Cliente Sestri Ponente');
+  await page.screenshot({ path: H.SP + '/tests/shots/t14_rename.png' });
+  await page.click('#sheetBox .btn.primary'); await H.sleep(400);
+  ok('имя изменилось в данных и в списке', await page.evaluate(() => Store.data.folders.find((f) => f.id === 'F0').name) === 'Cliente Sestri Ponente' && (await names()).includes('Cliente Sestri Ponente'), await names());
+  // удалить
+  await page.evaluate(() => { Store.data.markers.push({ id: 'M1', folderId: 'F1', name: 'm', lat: 44.5, lng: 8.9, photos: [] }); });
+  await hold('Via Pillea');
+  await page.click('#sheetBox .st-row:has-text("Удалить объект")'); await H.sleep(300);
+  ok('спрашивает подтверждение с числом', /Удалить объект и всё внутри \(1\)/.test(await page.evaluate(() => document.getElementById('sheetBox').innerText)), await page.evaluate(() => document.getElementById('sheetBox').innerText));
+  await page.click('#sheetBox .btn.danger'); await H.sleep(500);
+  ok('объект и его маркер удалены', await page.evaluate(() => !Store.data.folders.some((f) => f.id === 'F1') && !Store.data.markers.some((m) => m.id === 'M1')));
+  ok('в списке его нет', !(await names()).includes('Via Pillea'), await names());
+  ok('подсказка про корзину', /Корзин/.test(await H.toastText(page)), await H.toastText(page));
   ok('ошибок нет', !page.errors.length, page.errors);
   console.log(bad ? `\nОШИБОК: ${bad}` : '\nВСЕ ПРОВЕРКИ ПРОШЛИ');
   await browser.close(); process.exit(bad ? 1 : 0);

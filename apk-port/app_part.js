@@ -1215,7 +1215,8 @@
             renderList();
             toast(on ? 'Объект закреплён' : 'Объект откреплён');
           } }),
-        isManager() ? stRow({ icon: 'pencil', color: '#3b82f6', title: tr('Настройки объекта'), onclick: () => { closeSheet(); closeDrawer(); editFolder(f); } }) : null),
+        isManager() ? stRow({ icon: 'pencil', color: '#3b82f6', title: tr('Переименовать'), value: '', onclick: () => renameFolder(f) }) : null,
+        isManager() ? stRow({ icon: 'trash', color: '#ef4444', title: tr('Удалить объект'), cls: 'st-danger', onclick: () => askDeleteFolder(f) }) : null),
       h('button', { class: 'btn ghost', text: 'Отмена', onclick: closeSheet }));
     // окно открылось под пальцем, который ещё держат: «нажатие» при отпускании не должно его закрыть
     const t0 = Date.now(), swallow = (e) => { e.stopPropagation(); e.preventDefault(); };
@@ -1224,6 +1225,37 @@
       window.addEventListener('click', swallow, true);
       setTimeout(() => window.removeEventListener('click', swallow, true), 400);
     }, { once: true, capture: true });
+  }
+
+  // переименовать объект прямо из окна удержания
+  function renameFolder(f) {
+    const inp = h('input', { class: 'field', type: 'text', maxlength: '100', placeholder: 'Название объекта', value: f.name || '' });
+    const save = () => {
+      const v = inp.value.trim();
+      if (!v) { toast('Впишите название'); return; }
+      closeSheet();
+      if (v === f.name) return;
+      const x = folderById(f.id); if (x) x.name = v;
+      commit(); renderList(); updateFolderChip();
+      toast('Название сохранено');
+    };
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
+    openSheet(h('h3', { text: tr('Переименовать объект') }), inp,
+      h('div', { class: 'btn-row' },
+        h('button', { class: 'btn', text: 'Отмена', onclick: closeSheet }),
+        h('button', { class: 'btn primary', text: 'Сохранить', onclick: save })));
+    setTimeout(() => { inp.focus(); inp.select(); }, 60);
+  }
+  // удалить объект со всем содержимым (на этом телефоне оно попадает в корзину)
+  function askDeleteFolder(f) {
+    const ids = folderTree(f.id);
+    const count = S.markers.filter((m) => ids.includes(m.folderId)).length + S.lines.filter((l) => ids.includes(l.folderId)).length;
+    confirmSheet(count ? `${tr('Удалить объект и всё внутри')} (${count})?` : tr('Удалить объект?'), 'Удалить', () => {
+      deleteFolder(f.id);
+      if (PINS.has(f.id)) PINS.toggle(f.id);
+      commit(); renderList(); updateFolderChip();
+      toast(ST ? 'Объект удалён. Вернуть можно в «Корзине»' : 'Объект удалён');
+    });
   }
 
   function appStart() {
