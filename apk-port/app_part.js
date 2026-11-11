@@ -1182,6 +1182,50 @@
     body.scrollTop = keep;
   }
 
+  // ---------- закреплённые объекты: вверху списка в меню (личное для телефона, не уходит на общую карту) ----------
+  ICONS.pin = '<path d="M9 3h6l-1 6 4 4H6l4-4z"/><path d="M12 13v8"/>';
+  const PINS_KEY = 'fieldmap_pins';
+  const PINS = {
+    list() { try { const a = JSON.parse(localStorage.getItem(PINS_KEY)); return Array.isArray(a) ? a : []; } catch (e) { return []; } },
+    has(id) { return this.list().includes(id); },
+    toggle(id) {
+      const a = this.list().filter((x) => x !== id);
+      const on = a.length === this.list().length;   // не был закреплён — закрепляем (последний закреплённый — первым)
+      if (on) a.unshift(id);
+      try { localStorage.setItem(PINS_KEY, JSON.stringify(a)); } catch (e) { /* ignore */ }
+      return on;
+    },
+    // закреплённые — вверху в порядке закрепления, остальные — как были
+    sort(folders) {
+      const a = this.list();
+      const pinned = a.map((id) => folders.find((f) => f.id === id)).filter(Boolean);
+      return pinned.concat(folders.filter((f) => !a.includes(f.id)));
+    },
+  };
+  // зажать объект в меню: закрепить / открепить, настройки объекта
+  function folderMenu(f) {
+    const pinned = PINS.has(f.id);
+    openSheet(
+      h('h3', { class: 'fm-ttl' }, folderIcon(f.color), h('span', { text: f.name })),
+      h('div', { class: 'st-card st-in-sheet' },
+        stRow({ icon: 'pin', color: pinned ? '#64748b' : '#f59e0b', title: tr(pinned ? 'Открепить' : 'Закрепить наверху'),
+          sub: pinned ? null : tr('Объект будет первым в списке'), onclick: () => {
+            closeSheet();
+            const on = PINS.toggle(f.id);
+            renderList();
+            toast(on ? 'Объект закреплён' : 'Объект откреплён');
+          } }),
+        isManager() ? stRow({ icon: 'pencil', color: '#3b82f6', title: tr('Настройки объекта'), onclick: () => { closeSheet(); closeDrawer(); editFolder(f); } }) : null),
+      h('button', { class: 'btn ghost', text: 'Отмена', onclick: closeSheet }));
+    // окно открылось под пальцем, который ещё держат: «нажатие» при отпускании не должно его закрыть
+    const t0 = Date.now(), swallow = (e) => { e.stopPropagation(); e.preventDefault(); };
+    window.addEventListener('pointerup', () => {
+      if (Date.now() - t0 > 4000) return;
+      window.addEventListener('click', swallow, true);
+      setTimeout(() => window.removeEventListener('click', swallow, true), 400);
+    }, { once: true, capture: true });
+  }
+
   function appStart() {
     UPD.start();
     $('tbSync').onclick = syncChipTap;

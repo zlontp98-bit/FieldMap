@@ -48,6 +48,12 @@ rep_re(r'\A<!doctype html><html><head>.*?\n<title>FieldMap прототип</tit
 APK_CSS = '''/* ---- только в приложении: общая карта, аккаунт, «Поделиться» ---- */
 /* настройки: группы, цветные значки, переключатели */
 #page[data-screen="settings"] .page-body{padding-top:6px}
+.row .pin-ic{flex:none;width:18px;height:18px;color:#f59e0b;display:grid;place-items:center;margin-left:6px}
+.row .pin-ic svg{width:18px;height:18px;stroke:#f59e0b}
+.row.pinned{border-color:rgba(245,158,11,.35)}
+.d-pinsep{height:1px;background:var(--hair);margin:4px 6px 10px}
+.fm-ttl{display:flex;align-items:center;gap:10px}
+.fm-ttl > :first-child{width:28px;height:28px;flex:none}
 #page[data-screen="settings"] .page-head{background:var(--surf);border-bottom:0}
 #page[data-screen="settings"] .page-head .ibtn:first-child{width:42px;height:42px;border-radius:50%;background:var(--surf-2);border:1px solid var(--hair);font-size:20px}
 #page[data-screen="settings"] .page-head .title{text-align:center;font-size:18px}
@@ -345,6 +351,13 @@ T = [
     ('Нет интернета — адрес не определить', 'Niente internet: indirizzo non disponibile', 'No internet — the address is unavailable'),
     ('Снять', 'Scatta', 'Take photo'),
     ('Отметить', 'Segna', 'Mark'),
+    ('Закрепить наверху', 'Fissa in alto', 'Pin to top'),
+    ('Открепить', 'Sblocca', 'Unpin'),
+    ('Объект будет первым в списке', 'Il cantiere sarà il primo della lista', 'The site will be first in the list'),
+    ('Объект закреплён', 'Cantiere fissato in alto', 'Site pinned'),
+    ('Объект откреплён', 'Cantiere sbloccato', 'Site unpinned'),
+    ('Настройки объекта', 'Impostazioni del cantiere', 'Site settings'),
+    ('Закреплено', 'Fissato', 'Pinned'),
     ('Общие', 'Generali', 'General'),
     ('Обновления', 'Aggiornamenti', 'Updates'),
     ('Пробные версии', 'Versioni di prova', 'Test versions'),
@@ -954,6 +967,20 @@ rep("""  function photoWhere() {
 
 # ---------------------------------------------------------------- новый экран настроек (openSettings2 в app_part.js)
 rep("  function openSettings() {\n", "  function openSettings() { return openSettings2(); }\n  function openSettingsOld() {\n")
+
+# ---------------------------------------------------------------- закреплённые объекты (PINS, folderMenu в app_part.js)
+rep("""    folderBranch(parentId).filter((f) => canSee(f.id)).forEach((f) => {""",
+    """    const branch = folderBranch(parentId).filter((f) => canSee(f.id));
+    const list = parentId ? branch : PINS.sort(branch);
+    const nPinned = parentId ? 0 : list.filter((f) => PINS.has(f.id)).length;
+    list.forEach((f, i) => {
+      if (nPinned && i === nPinned && i < list.length) nodes.push(h('div', { class: 'd-pinsep' }));""")
+rep("""        h('div', { class: 'txt' }, h('div', { class: 'ttl', text: f.name })));""",
+    """        h('div', { class: 'txt' }, h('div', { class: 'ttl', text: f.name })));
+      if (!parentId && PINS.has(f.id)) { fr.classList.add('pinned'); const pi = ico('pin'); pi.classList.add('pin-ic'); pi.setAttribute('aria-label', tr('Закреплено')); fr.querySelector('.txt').after(pi); }""")
+rep("""      if (isManager()) longPress(fr, () => { closeDrawer(); editFolder(f); });""",
+    """      // удержание: закрепить наверху (может каждый — это только для своего телефона) и настройки объекта
+      longPress(fr, () => folderMenu(f));""")
 
 open(dst, 'w', encoding='utf-8').write(s)
 print('ok', len(s), s.count('\n'))
