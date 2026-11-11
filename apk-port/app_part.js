@@ -394,8 +394,22 @@
   };
 
   // ---------- адрес по координатам (OpenStreetMap, нужен интернет) ----------
-  // Nominatim: не чаще раза в секунду (правило сервиса), ответы запоминаются на телефоне; запасной — Photon (komoot)
+  // Сначала — геокодер телефона (сервис Google, с номерами домов; оболочка 10+), если не ответил —
+  // Nominatim (не чаще раза в секунду, правило сервиса) и запасной Photon (komoot). Ответы запоминаются на телефоне.
   const GEO = (() => {
+    const gWait = {};
+    let gSeq = 0;
+    window.__onGeocode = (id, a) => { const f = gWait[id]; delete gWait[id]; if (f) f(a && typeof a === 'object' ? a : null); };
+    function phone(lat, lng) {
+      const B = window.AndroidBridge;
+      if (!B || !B.geocode) return Promise.resolve(null);
+      return new Promise((res) => {
+        const id = 'g' + (++gSeq);
+        gWait[id] = res;
+        setTimeout(() => { if (gWait[id]) { delete gWait[id]; res(null); } }, 6000);
+        try { B.geocode(lat, lng, id); } catch (e) { delete gWait[id]; res(null); }
+      });
+    }
     const KEY = 'fieldmap_geo', MAX = 400;
     let cache = {};
     try { cache = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { cache = {}; }
@@ -412,8 +426,18 @@
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }
-    // { road, house, quarter, city } или null
-    function ask(lat, lng) {
+    // { road, house, quarter, city, line? } или null
+    async function ask(lat, lng) {
+      const g = await phone(lat, lng);
+      if (g && (g.road || g.city)) {
+        // строка адреса телефона без страны: «Via Borzoli, 116, 16153 Genova GE»
+        let line = String(g.line || '');
+        if (g.country) line = line.replace(new RegExp(',\\s*' + g.country.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$'), '');
+        return { road: g.road || '', house: g.house || '', quarter: g.quarter || '', city: g.city || '', line: line.trim() };
+      }
+      return askOsm(lat, lng);
+    }
+    function askOsm(lat, lng) {
       const run = async () => {
         const wait = 1100 - (Date.now() - lastAt);
         if (wait > 0) await new Promise((r) => setTimeout(r, wait));
@@ -437,7 +461,7 @@
       return p;
     }
     async function get(lat, lng) {
-      const k = lat.toFixed(4) + ',' + lng.toFixed(4) + ':' + lang();
+      const k = '2:' + lat.toFixed(4) + ',' + lng.toFixed(4) + ':' + lang();
       if (cache[k]) return cache[k].a;
       if (navigator.onLine === false) return null;
       const a = await ask(+lat.toFixed(6), +lng.toFixed(6));
@@ -449,6 +473,7 @@
       async address(lat, lng, ms) {
         const a = await timed(get(lat, lng).catch(() => null), ms || 6000);
         if (!a) return '';
+        if (a.line) return a.line;
         const road = [a.road, a.house].filter(Boolean).join(' ');
         return [road, a.quarter && a.quarter !== a.city ? a.quarter : '', a.city].filter(Boolean).join(', ');
       },

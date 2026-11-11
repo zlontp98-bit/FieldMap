@@ -7,6 +7,8 @@ const H = require('./harness.cjs');
   await ctx.route(/gstatic|cartocdn/, (r) => r.abort());
   const page = await ctx.newPage();
   const errs = []; page.on('pageerror', (e) => errs.push(e.message)); page.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+  // геокодер телефона (как Android Geocoder: Google, с номером дома)
+  await page.addInitScript(() => { window.AndroidBridge = { geocode(lat, lng, id) { setTimeout(() => window.__onGeocode(id, { road: 'Via Borzoli', house: '116', quarter: 'Sestri Ponente', city: 'Genova', postcode: '16153', line: 'Via Borzoli, 116, 16153 Genova GE, Italia', country: 'Italia' }), 300); } }; });
   // как в WebView без нажатия: первый play() отклоняется
   await page.addInitScript(() => { const orig = HTMLMediaElement.prototype.play; let n = 0; HTMLMediaElement.prototype.play = function () { if (n++ === 0) return Promise.reject(new DOMException('gesture', 'NotAllowedError')); return orig.call(this); }; });
   await page.addInitScript(() => { localStorage.setItem('fieldmap_login_later', new Date().toDateString()); localStorage.setItem('fieldmap_view', JSON.stringify({ lat: 44.43265, lng: 8.85499, z: 18 })); });

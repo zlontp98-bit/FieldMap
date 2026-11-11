@@ -104,7 +104,7 @@ fieldmap2/
   versionCode/versionName и `minApk`), port.py/bundle.py, архив, push. `actions_run_trigger` `build-apk.yml` c
   `inputs: {channel: test}` (или без inputs) → релиз `latest`: пользователь проверяет на своём телефоне с включёнными
   «Пробными версиями». По команде «выпускай всем» — тот же запуск с `inputs: {channel: stable}`.
-  Номер `web` только растёт; `web` ≥ versionCode не обязательно, это разные счётчики (сейчас web 14 «4.2.2», versionCode 9, minApk 9 — в `latest`; `stable` ещё не выпускался; в 4.2.2 у видео камеры прозрачный poster — иначе WebView рисует серый значок «играть» — и кнопка «Включить камеру», если play() отклонён. В следующем APK стоит добавить `setMediaPlaybackRequiresUserGesture(false)`). «Слои карты» считают цифры по активному объекту (`statFolders`).
+  Номер `web` только растёт; `web` ≥ versionCode не обязательно, это разные счётчики (сейчас web 15 «4.3», versionCode 10, minApk 10 — в `latest`; `stable` ещё не выпускался)`). «Слои карты» считают цифры по активному объекту (`statFolders`).
 
 ## Защита работы (с 4.1) — store.js
 
@@ -128,7 +128,11 @@ fieldmap2/
 
 ## Адрес по координатам (с 4.1.3) — `GEO` в app_part.js
 
-- OpenStreetMap Nominatim (`reverse`, CORS открыт, не чаще раза в секунду — очередь), запасной — Photon (komoot).
+- С 4.3 сначала геокодер телефона (`AndroidBridge.geocode(lat, lng, id)` → `android.location.Geocoder`, Locale it_IT,
+  ответ в `__onGeocode(id, {road, house, quarter, city, postcode, line, country})`): это сервис Google, в нём есть номера
+  домов, которых в OpenStreetMap часто нет (Via Borzoli в Генуе — без номеров). Для подписи берётся `line` без страны.
+  Не ответил за 6 с — OpenStreetMap Nominatim (`reverse`, CORS открыт, не чаще раза в секунду — очередь), запасной — Photon (komoot).
+  Ключ кэша с префиксом `2:` (старые ответы OSM без номеров не используются). В оболочке 10 ещё `setMediaPlaybackRequiresUserGesture(false)`.
   Ответы — в localStorage `fieldmap_geo` (до 400, ключ — координаты до 4 знаков + язык; язык ru → it, названия как на месте).
 - Подпись фото камеры: третья строка — адрес места съёмки (`GEO.address`, ждём до 5 с; без сети — объект · название).
 - Отчёт за день: место, если не вписано вручную, — `autoPlaceFor(день)`: в каждом объекте с работой за день первый
@@ -151,7 +155,7 @@ fieldmap2/
   и вручную `actions_run_trigger` (`run_workflow`, `build-apk.yml`, ref = ветка). ~1–2 минуты, кладёт APK в релиз
   **`latest`** (заменяет предыдущий). Скачать `https://github.com/zlontp98-bit/FieldMap/releases/download/latest/FieldMap.apk`
   через curl, сверить sha256 с digest релиза и отправить файлом (SendUserFile).
-- Перед каждой новой сборкой APK поднимать `versionCode`/`versionName` в `app/build.gradle` (сейчас 9 / 4.2);
+- Перед каждой новой сборкой APK поднимать `versionCode`/`versionName` в `app/build.gradle` (сейчас 10 / 4.3);
   если менялась только страница — достаточно `web/version.json` (см. «Обновление без APK»).
   Подпись — `app/debug.keystore` (одинаковая, ставится поверх; SHA-1 `F9:83:10:43:CB:EF:30:93:34:75:66:59:DD:41:38:EC:96:01:7E:3D`).
 - Сайты Google теперь открыты (dl.google.com, gstatic, firestore): MainActivity проверяется `javac` против
