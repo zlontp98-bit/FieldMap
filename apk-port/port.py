@@ -95,6 +95,9 @@ APK_CSS = '''/* ---- только в приложении: общая карта
 .cam-shot{width:76px;height:76px;border-radius:50%;border:5px solid #fff;background:#fbbf24;box-shadow:0 0 0 3px rgba(0,0,0,.4)}
 .cam-shot:active{transform:scale(.93)}
 .cam-shot:disabled{opacity:.5}
+.cam-start{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:10px;padding:16px 22px;border:0;border-radius:16px;background:#3b82f6;color:#fff;font:600 17px system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.5)}
+.cam-start .ic svg{stroke:#fff}
+.cam-box video::-webkit-media-controls{display:none!important}
 /* окно загрузки обновления */
 .upd-box{position:fixed;inset:0;z-index:5000;display:grid;place-items:center;background:rgba(0,0,0,.55)}
 .upd-card{width:min(300px,82vw);padding:22px 20px 18px;border-radius:20px;background:#1c1f26;color:#fff;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.5);font:15px system-ui,sans-serif}
@@ -279,6 +282,7 @@ T = [
     ('Ожидание адреса из интернета…', 'In attesa dell’indirizzo da internet…', 'Waiting for the address from the internet…'),
     ('Нет интернета — адрес не определить', 'Niente internet: indirizzo non disponibile', 'No internet — the address is unavailable'),
     ('Снять', 'Scatta', 'Take photo'),
+    ('Включить камеру', 'Accendi la fotocamera', 'Turn on the camera'),
     ('Камера ещё не готова', 'La fotocamera non è ancora pronta', 'The camera is not ready yet'),
     ('Нет доступа к камере', 'Nessun accesso alla fotocamera', 'No access to the camera'),
     ('Не удалось сохранить фото', 'Impossibile salvare la foto', 'Could not save the photo'),

@@ -554,7 +554,10 @@
       target = { it, kind }; onShot = done;
       addr = { at: null, text: '', busy: false, t: 0 };
       el = h('div', { id: 'camBox', class: 'cam-box' },
-        h('video', { id: 'camVideo', autoplay: true, playsinline: true, muted: true }),
+        // poster — прозрачная картинка: иначе Android рисует поверх видео большой серый значок «играть»
+        h('video', { id: 'camVideo', autoplay: true, playsinline: true, muted: true,
+          poster: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7' }),
+        h('button', { type: 'button', id: 'camStart', class: 'cam-start', hidden: true, onclick: () => startVideo(true) }, ico('camera'), h('span', { text: 'Включить камеру' })),
         h('div', { class: 'cam-top' },
           h('button', { type: 'button', class: 'cam-x', 'aria-label': 'Закрыть', onclick: close }, ico('x')),
           h('div', { class: 'cam-title', text: [topFolderName(it.folderId), it.name].filter(Boolean).join(' · ') })),
@@ -575,12 +578,25 @@
         stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } } });
         if (!el) { stream.getTracks().forEach((t) => t.stop()); return; }
         const v = $('camVideo');
+        v.muted = true;
         v.srcObject = stream;
-        await v.play().catch(() => {});
+        startVideo(false);
       } catch (e) {
         close();
         if (fallback) fallback(); else toast('Нет доступа к камере');
       }
+    }
+    // видео с камеры: без нажатия Android иногда не запускает его — тогда кнопка «Включить камеру» (и нажатие по экрану)
+    function startVideo(byTap) {
+      const v = $('camVideo'), b = $('camStart');
+      if (!v) return;
+      const shown = () => { if (b) b.hidden = !v.paused; };
+      const p = v.play();
+      if (p && p.then) p.then(shown, () => { if (b) b.hidden = false; }); else shown();
+      if (!byTap) setTimeout(shown, 1500);
+      v.onclick = () => { if (v.paused) startVideo(true); };
+      v.onplaying = () => { if (b) b.hidden = true; };
+      if (!v.paused && b) b.hidden = true;
     }
     function close() {
       clearInterval(timer); timer = null;
