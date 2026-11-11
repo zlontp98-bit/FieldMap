@@ -48,6 +48,17 @@ rep_re(r'\A<!doctype html><html><head>.*?\n<title>FieldMap прототип</tit
 APK_CSS = '''/* ---- только в приложении: общая карта, аккаунт, «Поделиться» ---- */
 /* настройки: группы, цветные значки, переключатели */
 #page[data-screen="settings"] .page-body{padding-top:6px}
+/* изменение точек линии */
+.le-bar[hidden]{display:none}
+.le-bar{position:fixed;left:10px;right:10px;bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:520;display:flex;gap:6px;padding:6px;border-radius:22px;background:var(--glass-2,#1d2026);border:1px solid var(--hair);box-shadow:0 8px 30px rgba(0,0,0,.45)}
+.le-btn{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:58px;border:0;border-radius:16px;background:transparent;color:var(--tx);font:inherit;font-size:12.5px;padding:4px 2px}
+.le-btn b{font-size:22px;line-height:22px;font-weight:600}
+.le-btn .ic{width:22px;height:22px;display:grid;place-items:center}.le-btn .ic svg{width:22px;height:22px}
+.le-btn:active{background:var(--surf-3)}
+.le-btn:disabled{opacity:.35}
+.le-btn.le-save{background:#22c55e;color:#04210f;font-weight:650}
+.le-btn.le-save .ic svg{stroke:#04210f}
+.le-diffs{display:flex;flex-direction:column;gap:6px;margin:4px 2px 14px;color:var(--tx-2);font-size:15px}
 .row .pin-ic{flex:none;width:18px;height:18px;color:#f59e0b;display:grid;place-items:center;margin-left:6px}
 .row .pin-ic svg{width:18px;height:18px;stroke:#f59e0b}
 .row.pinned{border-color:rgba(245,158,11,.35)}
@@ -352,6 +363,22 @@ T = [
     ('Нет интернета — адрес не определить', 'Niente internet: indirizzo non disponibile', 'No internet — the address is unavailable'),
     ('Снять', 'Scatta', 'Take photo'),
     ('Отметить', 'Segna', 'Mark'),
+    ('тяните точки пальцем', 'trascina i punti col dito', 'drag the points with a finger'),
+    ('было', 'era', 'was'),
+    ('Назад', 'Indietro', 'Back'),
+    ('Удалить точку', 'Elimina punto', 'Delete point'),
+    ('Тяните точку пальцем. Нажмите ＋ между точками — новая точка', 'Trascina un punto col dito. Tocca ＋ tra i punti per un nuovo punto', 'Drag a point with a finger. Tap ＋ between points for a new point'),
+    ('В линии должно остаться хотя бы 2 точки', 'La linea deve avere almeno 2 punti', 'The line must keep at least 2 points'),
+    ('Эта точка на развилке — от неё идут другие линии, её не убрать', 'Questo punto è su una diramazione: non si può togliere', 'This point is on a junction — it cannot be removed'),
+    ('Эта точка на развилке — от неё идут другие линии, её не двигаем', 'Questo punto è su una diramazione: non si sposta', 'This point is on a junction — it does not move'),
+    ('Выйти без сохранения? Линия останется как была.', 'Uscire senza salvare? La linea resta com’era.', 'Leave without saving? The line stays as it was.'),
+    ('Выйти', 'Esci', 'Leave'),
+    ('Линию только что изменили на другом телефоне — откройте изменение заново', 'La linea è appena stata modificata su un altro telefono: riapri la modifica', 'The line was just changed on another phone — open editing again'),
+    ('Линию изменили на другом телефоне — изменение отменено', 'La linea è stata modificata su un altro telefono: modifica annullata', 'The line was changed on another phone — editing cancelled'),
+    ('Длина слоёв изменится', 'La lunghezza degli strati cambierà', 'Layer lengths will change'),
+    ('Линия сохранена', 'Linea salvata', 'Line saved'),
+    ('Точки', 'Punti', 'Points'),
+    ('Изменить точки на карте', 'Modifica i punti sulla mappa', 'Edit points on the map'),
     ('Закрепить наверху', 'Fissa in alto', 'Pin to top'),
     ('Открепить', 'Sblocca', 'Unpin'),
     ('Объект будет первым в списке', 'Il cantiere sarà il primo della lista', 'The site will be first in the list'),
@@ -988,6 +1015,41 @@ rep("""        h('div', { class: 'txt' }, h('div', { class: 'ttl', text: f.name 
 rep("""      if (isManager()) longPress(fr, () => { closeDrawer(); editFolder(f); });""",
     """      // удержание: закрепить наверху (может каждый — это только для своего телефона) и настройки объекта
       longPress(fr, () => folderMenu(f));""")
+
+# ---------------------------------------------------------------- изменение точек линии (LEDIT в app_part.js)
+rep("""  function draw() {
+    const W = innerWidth, H = innerHeight;
+    parkedReels = [];""", """  var LEDIT_ON = null;   // идёт изменение точек линии: кадр рисуется с новой формой линии (LEDIT в app_part.js)
+  function draw() { if (LEDIT_ON) { LEDIT_ON.render(drawReal); return; } drawReal(); }
+  function drawReal() {
+    const W = innerWidth, H = innerHeight;
+    parkedReels = [];""")
+rep("""      actions: canModify(l) ? [
+        { label: 'Настройки', icon: 'pencil', onclick: () => { closeMSheet(); editLine(l); } },""",
+    """      actions: canModify(l) ? [
+        { label: 'Настройки', icon: 'pencil', onclick: () => { closeMSheet(); editLine(l); } },
+        { label: 'Точки', icon: 'editpts', onclick: () => LEDIT.start(l) },""")
+rep("""      h('div', { class: 'note', text: `${tr('Длина:')} ${fmtLen(pathLen(d.points))} · ${d.points.length} ${pw(d.points.length, 'point')}` }),""",
+    """      h('div', { class: 'note', text: `${tr('Длина:')} ${fmtLen(pathLen(d.points))} · ${d.points.length} ${pw(d.points.length, 'point')}` }),
+      isNew ? null : h('button', { class: 'btn le-open', onclick: () => LEDIT.start(S.lines.find((x) => x.id === src.id)) }, ico('editpts'), h('span', { text: tr('Изменить точки на карте') })),""")
+# «продолжить линию»: точки старой линии можно убрать кнопкой ↶ — слои пересчитываем по тем точкам, что остались
+rep("""    LS.pts = pts; LS.editId = L.id; LS.pick = null;
+    updateLine();""", """    LS.pts = pts; LS.editId = L.id; LS.pick = null; LS.editKeep = pts.length;   // сколько старых точек ещё осталось (↶ их убирает)
+    updateLine();""")
+rep("""      if (LS.editRev) flipLineS(ex, LS.editRev);   // продлили от начала — линия теперь идёт в обратную сторону
+      ex.points = pts;""", """      // продлили (от начала — линия теперь идёт в обратную сторону) или убрали старые точки кнопкой ↶:
+      // положения слоёв переносим по оставшимся старым точкам
+      const nb = ex.points.length, keep = Math.min(nb, LS.editKeep == null ? nb : LS.editKeep), rv = !!LS.editRev;
+      const ids = pts.map((p, k) => (k < keep ? (rv ? nb - 1 - k : k) : -1));
+      LEDIT_REMAP(ex, pts, ids, { reversed: rv, markers: false });""")
+
+rep("""    LS.pts.pop(); updateLine();
+  }
+  function updateLine() {""", """    LS.pts.pop();
+    if (LS.editId && LS.editKeep != null) LS.editKeep = Math.min(LS.editKeep, LS.pts.length);
+    updateLine();
+  }
+  function updateLine() {""")
 
 open(dst, 'w', encoding='utf-8').write(s)
 print('ok', len(s), s.count('\n'))

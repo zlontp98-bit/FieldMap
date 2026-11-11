@@ -372,6 +372,7 @@
   // ---------- кнопка «Назад» Android (MainActivity.onBackPressed): true — страница закрыла что-то сама ----------
   window.__onBack = () => {
     if (CAM.isOpen) { CAM.close(); return true; }
+    if (LEDIT.on && $('sheet').classList.contains('hidden')) { LEDIT.cancel(); return true; }
     if (MARK.isOpen) { MARK.close(); return true; }
     if (!$('viewer').classList.contains('hidden')) { closeViewer(); return true; }
     if ($('schemaActs')) { closeSchemaActs(); return true; }
@@ -1257,6 +1258,300 @@
       toast(ST ? 'Объект удалён. Вернуть можно в «Корзине»' : 'Объект удалён');
     });
   }
+
+  // ---------- изменение точек линии: тянуть пальцем, добавить на середине, удалить, «Назад»; слои едут вместе с линией ----------
+  // Положения кабелей и трубок на линии хранятся в метрах от её начала (ly.s, via[].s, cut.s0). Когда точки меняются,
+  // каждое положение переносится между «опорами» — оставшимися старыми точками (кусок между ними растягивается/сжимается).
+  // Пока правка не сохранена, данные карты НЕ меняются: новое положение подставляется только на время рисования кадра.
+  function remapPlan(L, newPts, ids, opt) {
+    opt = opt || {};
+    const oldPts = L.points, oc = geoCum(oldPts), nc = geoCum(newPts);
+    const OT = oc[oc.length - 1], NT = nc[nc.length - 1], rev = !!opt.reversed;
+    const A = [];
+    ids.forEach((oi, ni) => { if (oi >= 0 && oi < oldPts.length) A.push([oc[oi], nc[ni]]); });
+    A.sort((a, b) => a[0] - b[0]);
+    if (!ids.includes(0)) A.unshift([0, rev ? NT : 0]);
+    if (!ids.includes(oldPts.length - 1)) A.push([OT, rev ? 0 : NT]);
+    const map = (v) => {
+      const x = clamp(Number(v) || 0, A[0][0], A[A.length - 1][0]);
+      for (let k = 0; k < A.length - 1; k++) {
+        const [a0, b0] = A[k], [a1, b1] = A[k + 1];
+        if (x <= a1 + 1e-9) return a1 - a0 < 1e-9 ? b1 : b0 + (b1 - b0) * (x - a0) / (a1 - a0);
+      }
+      return A[A.length - 1][1];
+    };
+    const ch = [], homes = new Map();
+    // свои слои линии
+    (L.layers || []).forEach((ly) => {
+      const sl = layerSList(L, ly);
+      if (sl && sl.length > 1) ch.push({ o: ly, k: 's', v: sl.map(map) });
+      if (ly.cut && typeof ly.cut.s0 === 'number') ch.push({ o: ly.cut, k: 's0', v: map(ly.cut.s0) });
+      homes.set(ly, L);
+    });
+    // кабели с других линий, идущие по этой через развилку
+    S.lines.forEach((hl) => (hl.layers || []).forEach((ly) => (ly.via || []).forEach((v) => {
+      if (v.line !== L.id || !v.s || !v.s.length) return;
+      ch.push({ o: v, k: 's', v: v.s.map(map) }); homes.set(ly, hl);
+    })));
+    // маркеры на линии едут вместе с ней (кроме развилок и маркеров, через которые идут другие линии)
+    if (opt.markers !== false) {
+      lineMarkers(L).forEach(({ m, shared }) => {
+        if (shared) return;
+        const p = pointAtS(newPts, nc, map(projectS(oldPts, m.lat, m.lng)));
+        ch.push({ o: m, k: 'lat', v: p[0] }, { o: m, k: 'lng', v: p[1] });
+      });
+    }
+    ch.push({ o: L, k: 'points', v: newPts.map((p) => p.slice()) });
+    return { ch, homes, L };
+  }
+  // применить: массивы меняются на месте (кэши кусков кабелей держат ссылки на них); вернуть — тем же путём назад
+  function planApply(plan) {
+    const undo = [];
+    const set = (o, k, v) => {
+      const had = Object.prototype.hasOwnProperty.call(o, k), old = o[k];
+      if (Array.isArray(old) && Array.isArray(v)) { undo.push({ o, k, arr: old.slice() }); old.splice(0, old.length, ...v); }
+      else { undo.push({ o, k, had, old }); o[k] = v; }
+    };
+    plan.ch.forEach((c) => set(c.o, c.k, c.v));
+    // путь слоёв целиком (по нему длина) — уже по новым положениям
+    plan.homes.forEach((home, ly) => { const g = partsGeo(layerParts(home, ly)); if (g.length > 1) set(ly, 'points', g); });
+    return () => {
+      for (let i = undo.length - 1; i >= 0; i--) {
+        const u = undo[i];
+        if (u.arr) u.o[u.k].splice(0, u.o[u.k].length, ...u.arr);
+        else if (u.had) u.o[u.k] = u.old; else delete u.o[u.k];
+      }
+    };
+  }
+  // расстояние от точки до линии (м)
+  function distToPts(pts, lat, lng) {
+    if (!pts || pts.length < 2) return Infinity;
+    return hav([lat, lng], pointAtS(pts, geoCum(pts), projectS(pts, lat, lng)));
+  }
+  // маркеры, стоящие на линии; shared — развилка или через маркер идёт ещё линия: такой маркер не двигаем
+  function lineMarkers(L) {
+    const out = [];
+    S.markers.forEach((m) => {
+      if (distToPts(L.points, m.lat, m.lng) > 1) return;
+      const shared = m.shape === 'junction' || S.lines.some((o) => o !== L && o.points && distToPts(o.points, m.lat, m.lng) <= 1);
+      out.push({ m, shared });
+    });
+    return out;
+  }
+  ICONS.editpts = '<path d="M4 18l5-8 6 4 5-9"/><circle cx="4" cy="18" r="2"/><circle cx="9" cy="10" r="2"/><circle cx="15" cy="14" r="2"/><circle cx="20" cy="5" r="2"/>';
+  var LEDIT_REMAP = (L, newPts, ids, opt) => planApply(remapPlan(L, newPts, ids, opt));   // для «продолжить линию»
+
+  const LEDIT = (() => {
+    let st = null;
+    const bar = h('div', { id: 'leBar', class: 'le-bar', hidden: true });
+    const bUndo = h('button', { type: 'button', class: 'le-btn', onclick: () => undo() }, h('b', { text: '↶' }), h('span', { text: 'Назад' }));
+    const bDel = h('button', { type: 'button', class: 'le-btn', onclick: () => delSel() }, ico('trash'), h('span', { text: 'Удалить точку' }));
+    const bCancel = h('button', { type: 'button', class: 'le-btn', onclick: () => cancel() }, ico('x'), h('span', { text: 'Отмена' }));
+    const bSave = h('button', { type: 'button', class: 'le-btn le-save', onclick: () => save() }, ico('check'), h('span', { text: 'Сохранить' }));
+    bar.append(bUndo, bDel, bCancel, bSave);
+    document.body.append(bar);
+    const line = () => st && lineById(st.id);
+    const snap = () => ({ pts: st.pts.map((p) => p.slice()), ids: st.ids.slice(), sel: st.sel });
+    const push = () => { st.hist.push(snap()); if (st.hist.length > 60) st.hist.shift(); };
+    function plan() {
+      if (st.planVer !== st.ver || st.dv !== dataVer) { st.plan = remapPlan(line(), st.pts, st.ids); st.planVer = st.ver; st.dv = dataVer; }
+      return st.plan;
+    }
+    function ui() {
+      const L = line(); if (!L) return;
+      $('modeTopText').textContent = `${L.name || tr('Линия')}: ${tr('тяните точки пальцем')}`;
+      const was = pathLen(st.orig), now = pathLen(st.pts);
+      setModeSub(Math.abs(was - now) < 0.5 ? `${tr('Длина:')} ${fmtLen(now)}` : `${tr('Длина:')} ${fmtLen(now)} (${tr('было')} ${fmtLen(was)})`);
+      bUndo.disabled = !st.hist.length;
+      bDel.disabled = !(st.sel >= 0 && st.pts.length > 2);
+    }
+    function start(L) {
+      if (!L || !L.points || L.points.length < 2) return;
+      if (!canModify(L)) { noRights(); return; }
+      closeMSheet(); closeSheet(); if (pageIsOpen()) closePage(); closeDrawer();
+      if (mode) endMode();
+      clearSelection();
+      const locked = new Set();
+      lineMarkers(L).forEach(({ m, shared }) => {
+        if (!shared) return;
+        L.points.forEach((p, i) => { if (hav(p, [m.lat, m.lng]) <= 1) locked.add(i); });
+      });
+      st = { id: L.id, orig: L.points.map((p) => p.slice()), pts: L.points.map((p) => p.slice()), ids: L.points.map((p, i) => i),
+        hist: [], sel: -1, ver: 1, planVer: 0, dv: -1, locked, drag: null };
+      mode = 'ledit'; LEDIT_ON = api;
+      setChrome(true);
+      $('centerRing').hidden = true;
+      selectedLineId = L.id;
+      bar.hidden = false;
+      fitPoints(L.points);
+      ui(); draw();
+      toast('Тяните точку пальцем. Нажмите ＋ между точками — новая точка');
+    }
+    function finish() {
+      st = null; LEDIT_ON = null; bar.hidden = true;
+      mode = null; selectedLineId = null;
+      setChrome(false);
+      draw();
+    }
+    function changed() { st.ver++; ui(); draw(); }
+    function undo() { if (!st || !st.hist.length) return; const s0 = st.hist.pop(); st.pts = s0.pts; st.ids = s0.ids; st.sel = s0.sel; changed(); }
+    function delSel() {
+      if (!st || st.sel < 0) return;
+      if (st.pts.length <= 2) { toast('В линии должно остаться хотя бы 2 точки'); return; }
+      if (st.ids[st.sel] >= 0 && st.locked.has(st.ids[st.sel])) { toast('Эта точка на развилке — от неё идут другие линии, её не убрать'); return; }
+      push(); st.pts.splice(st.sel, 1); st.ids.splice(st.sel, 1); st.sel = -1; changed();
+    }
+    function cancel() {
+      if (!st) return;
+      if (!st.hist.length) { finish(); return; }
+      confirmSheet(tr('Выйти без сохранения? Линия останется как была.'), tr('Выйти'), finish);
+    }
+    function save() {
+      if (!st) return;
+      const L = line();
+      if (!L) { finish(); return; }
+      if (JSON.stringify(L.points) !== JSON.stringify(st.orig)) { toast('Линию только что изменили на другом телефоне — откройте изменение заново'); finish(); return; }
+      if (JSON.stringify(st.pts) === JSON.stringify(st.orig)) { finish(); return; }
+      // сколько станет у слоёв: показываем, если длина заметно меняется
+      const p = remapPlan(L, st.pts, st.ids);
+      const before = new Map(); p.homes.forEach((home, ly) => before.set(ly, pathLen(partsGeo(layerParts(home, ly)))));
+      const back = planApply(p);
+      const diffs = [];
+      p.homes.forEach((home, ly) => { const a = before.get(ly), b = layerLen(ly); if (Math.abs(a - b) >= 0.5) diffs.push(`${ly.name || layerTypeName(ly)}: ${fmtLen(a)} → ${fmtLen(b)}`); });
+      back();
+      const doSave = () => {
+        const L2 = line(); if (!L2) { finish(); return; }
+        planApply(remapPlan(L2, st.pts, st.ids));
+        finish();
+        commit();
+        toast('Линия сохранена');
+      };
+      if (!diffs.length) { doSave(); return; }
+      openSheet(h('h3', { text: tr('Длина слоёв изменится') }),
+        h('div', { class: 'le-diffs' }, diffs.map((t) => h('div', { text: t }))),
+        h('div', { class: 'btn-row' },
+          h('button', { class: 'btn', text: 'Отмена', onclick: closeSheet }),
+          h('button', { class: 'btn primary', text: 'Сохранить', onclick: () => { closeSheet(); doSave(); } })));
+    }
+    // точки и «плюсы» между ними на экране
+    function handles() {
+      const P = st.pts.map((p) => screenOf(p[0], p[1]));
+      const mids = [];
+      for (let i = 0; i < P.length - 1; i++) {
+        const [x0, y0] = P[i], [x1, y1] = P[i + 1];
+        if (Math.hypot(x1 - x0, y1 - y0) > 56) mids.push({ i, x: (x0 + x1) / 2, y: (y0 + y1) / 2 });
+      }
+      return { P, mids };
+    }
+    function hit(x, y) {
+      const { P, mids } = handles();
+      let best = null, bd = 26;
+      P.forEach(([px, py], i) => { const d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; best = { kind: 'v', i }; } });
+      if (best) return best;
+      bd = 22;
+      mids.forEach((m) => { const d = Math.hypot(m.x - x, m.y - y); if (d < bd) { bd = d; best = { kind: 'mid', i: m.i, x: m.x, y: m.y }; } });
+      return best;
+    }
+    // маркер рядом с пальцем: точка прилипает к нему (кроме маркеров этой же линии — они едут с ней)
+    function snapGeo(x, y) {
+      const own = new Set(lineMarkers(line()).filter((e) => !e.shared).map((e) => e.m.id));
+      let best = null, bd = 18;
+      S.markers.forEach((m) => {
+        if (own.has(m.id) || !inView(m)) return;
+        const [mx, my] = screenOf(m.lat, m.lng), d = Math.hypot(mx - x, my - y);
+        if (d < bd) { bd = d; best = m; }
+      });
+      if (best) return [best.lat, best.lng];
+      const g = geoOfScreen(x, y); return [g.lat, g.lng];
+    }
+    const cv = $('map');
+    window.addEventListener('pointerdown', (e) => {
+      if (!st || e.target !== cv) return;
+      if (st.drag) { e.stopImmediatePropagation(); e.preventDefault(); return; }   // второй палец во время перетаскивания
+      const hh = hit(e.clientX, e.clientY);
+      if (!hh) { st.tap = { x: e.clientX, y: e.clientY, id: e.pointerId }; return; }   // мимо точек — карта двигается как обычно
+      e.stopImmediatePropagation(); e.preventDefault();
+      try { cv.setPointerCapture(e.pointerId); } catch (er) { /* ignore */ }
+      if (hh.kind === 'v' && st.ids[hh.i] >= 0 && st.locked.has(st.ids[hh.i])) {
+        st.sel = hh.i; ui(); draw();
+        toast('Эта точка на развилке — от неё идут другие линии, её не двигаем');
+        return;
+      }
+      const [px, py] = hh.kind === 'v' ? screenOf(st.pts[hh.i][0], st.pts[hh.i][1]) : [hh.x, hh.y];
+      st.drag = { id: e.pointerId, h: hh, off: [px - e.clientX, py - e.clientY], x: e.clientX, y: e.clientY, moved: false, idx: hh.kind === 'v' ? hh.i : -1 };
+    }, true);
+    window.addEventListener('pointermove', (e) => {
+      if (!st || !st.drag || e.pointerId !== st.drag.id) return;
+      e.stopImmediatePropagation();
+      const d = st.drag;
+      if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) return;
+      if (!d.moved) {
+        d.moved = true; push();
+        if (d.h.kind === 'mid') { const g = geoOfScreen(d.h.x, d.h.y); st.pts.splice(d.h.i + 1, 0, [g.lat, g.lng]); st.ids.splice(d.h.i + 1, 0, -1); d.idx = d.h.i + 1; }
+      }
+      st.sel = d.idx;
+      st.pts[d.idx] = snapGeo(e.clientX + d.off[0], e.clientY + d.off[1]);
+      st.ver++;
+      draw();
+    }, true);
+    const up = (e) => {
+      if (!st) return;
+      if (st.drag && e.pointerId === st.drag.id) {
+        e.stopImmediatePropagation();
+        const d = st.drag; st.drag = null;
+        if (!d.moved) {
+          if (d.h.kind === 'mid') { push(); const g = geoOfScreen(d.h.x, d.h.y); st.pts.splice(d.h.i + 1, 0, [g.lat, g.lng]); st.ids.splice(d.h.i + 1, 0, -1); st.sel = d.h.i + 1; changed(); }
+          else { st.sel = st.sel === d.idx ? -1 : d.idx; ui(); draw(); }
+        } else changed();
+        return;
+      }
+      // нажали мимо точек и не двигали карту — снять выбор
+      if (st.tap && st.tap.id === e.pointerId) {
+        if (Math.hypot(e.clientX - st.tap.x, e.clientY - st.tap.y) < 8 && st.sel >= 0) { st.sel = -1; ui(); draw(); }
+        st.tap = null;
+      }
+    };
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('pointercancel', (e) => { if (st && st.drag && e.pointerId === st.drag.id) { e.stopImmediatePropagation(); const d = st.drag; st.drag = null; if (d.moved) undo(); } }, true);
+    // кадр: на время рисования подставляем новую форму линии и новые места слоёв, потом сразу возвращаем
+    function render(drawReal) {
+      const L = line();
+      if (!L) { finish(); return; }
+      if (JSON.stringify(L.points) !== JSON.stringify(st.orig) && !st.warned) { st.warned = true; toast('Линию изменили на другом телефоне — изменение отменено'); setTimeout(finish, 0); }
+      let back = null;
+      try { back = planApply(plan()); drawReal(); } finally { if (back) back(); }
+      overlay();
+    }
+    function overlay() {
+      const { P, mids } = handles();
+      const col = safeColor(itemColor(line()));
+      ctx.save();
+      mids.forEach((m) => {
+        ctx.beginPath(); ctx.arc(m.x, m.y, 9, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(20,22,26,.78)'; ctx.fill();
+        ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(m.x - 4.5, m.y); ctx.lineTo(m.x + 4.5, m.y); ctx.moveTo(m.x, m.y - 4.5); ctx.lineTo(m.x, m.y + 4.5);
+        ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
+      });
+      P.forEach(([x, y], i) => {
+        const sel = i === st.sel, lock = st.ids[i] >= 0 && st.locked.has(st.ids[i]);
+        const r = sel ? 13 : 10;
+        ctx.beginPath();
+        if (lock) ctx.rect(x - r, y - r, 2 * r, 2 * r); else ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = sel ? '#3b82f6' : lock ? '#9ca3af' : '#fff'; ctx.fill();
+        ctx.lineWidth = 3; ctx.strokeStyle = sel ? '#fff' : col; ctx.stroke();
+      });
+      ctx.restore();
+    }
+    const api = { render, start, cancel, get on() { return !!st; } };
+    if (window.__bridgeCalls) {   // только в проверках (заглушка оболочки): экранные места точек
+      window.__scr = (la, ln) => screenOf(la, ln);
+      window.__lePts = () => (st ? st.pts.map((p) => p.slice()) : null);
+      window.__scrPt = (i) => (st ? screenOf(st.pts[i][0], st.pts[i][1]) : null);
+      window.__leStart = (id) => start(lineById(id));
+    }
+    return api;
+  })();
 
   function appStart() {
     UPD.start();
