@@ -309,6 +309,8 @@ T = [
     ('Нет интернета — адрес не определить', 'Niente internet: indirizzo non disponibile', 'No internet — the address is unavailable'),
     ('Снять', 'Scatta', 'Take photo'),
     ('Отметить', 'Segna', 'Mark'),
+    ('У фото нет места съёмки — показан маркер', 'La foto non ha il luogo dello scatto: ecco il marcatore', 'The photo has no location — showing the marker'),
+    ('У фото нет места съёмки — показана линия', 'La foto non ha il luogo dello scatto: ecco la linea', 'The photo has no location — showing the line'),
     ('Удалить фото', 'Elimina foto', 'Delete photo'),
     ('Удалить это фото?', 'Eliminare questa foto?', 'Delete this photo?'),
     ('Фото удалено', 'Foto eliminata', 'Photo deleted'),
@@ -766,7 +768,7 @@ $('viewer').querySelector('.v-top').insertBefore(h('button', { type: 'button', i
 rep("""    const w = $('vWhere');
     if (w) w.hidden = !(viewer.owner && isShot(p) && typeof p.lat === 'number');""",
     """    const w = $('vWhere');
-    if (w) w.hidden = !(viewer.owner && isShot(p) && typeof p.lat === 'number');
+    if (w) w.hidden = !viewer.owner;   // место съёмки, а если его нет — сам маркер или линия
     const can = !!(viewer.owner && canEditIn(viewer.owner.folderId));
     if ($('vMark')) $('vMark').hidden = !can;
     if ($('vDel')) $('vDel').hidden = !can;""")
@@ -868,6 +870,37 @@ rep("""  applyStatic();
   renderDrawer();
   appStart();
 })();""")
+
+# ---------------------------------------------------------------- фото линии в карточке, как у маркера; «Где снято» — всегда
+rep("""      // у линии фото не показываем сразу (не загружаем) — только кнопка «Где сняты фото»
+      title: l.name, date: l.createdAt, photos: [], desc: l.description, owner: l,""",
+    """      // фото линии видны в карточке, как у маркера (пользователь просил); «Где сняты фото» — все места на карте
+      title: l.name, date: l.createdAt, photos: l.photos || [], desc: l.description, owner: l,""")
+rep("""  function photoWhere() {
+    const p = viewer.list[viewer.i], it = viewer.owner;
+    if (!isShot(p) || typeof p.lat !== 'number' || !it) return;
+    closeViewer(); closeMSheet();
+    photoPins = { it, focus: p.id };
+    flyTo(p.lat, p.lng, Math.max(V.z, 18));
+  }""", """  function photoWhere() {
+    const p = viewer.list[viewer.i], it = viewer.owner;
+    if (!it) return;
+    const isLine = Array.isArray(it.points);
+    closeViewer(); closeMSheet();
+    // маркер или линия, к которым относится фото, подсвечиваются
+    if (isLine) selectedLineId = it.id; else selectedMarkerId = it.id;
+    if (isShot(p) && typeof p.lat === 'number') {
+      photoPins = { it, focus: p.id };
+      flyTo(p.lat, p.lng, Math.max(V.z, 18));
+    } else if (!isLine && typeof it.lat === 'number') {
+      flyTo(it.lat, it.lng, Math.max(V.z, 18));
+      toast('У фото нет места съёмки — показан маркер');
+    } else if (isLine && it.points && it.points.length) {
+      fitPoints(it.points);
+      toast('У фото нет места съёмки — показана линия');
+    }
+    draw();
+  }""")
 
 open(dst, 'w', encoding='utf-8').write(s)
 print('ok', len(s), s.count('\n'))
