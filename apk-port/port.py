@@ -98,6 +98,32 @@ APK_CSS = '''/* ---- только в приложении: общая карта
 .cam-start{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:10px;padding:16px 22px;border:0;border-radius:16px;background:#3b82f6;color:#fff;font:600 17px system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.5)}
 .cam-start .ic svg{stroke:#fff}
 .cam-box video::-webkit-media-controls{display:none!important}
+/* просмотр фото: удалить и отметить */
+.sheet{z-index:720}   /* окно подтверждения — над просмотром фото (у обоих было 700) */
+.v-top{gap:10px}
+.v-top #vCount{flex:1}
+.v-del{width:40px;height:40px;border:0;border-radius:50%;background:rgba(239,68,68,.9);color:#fff;display:grid;place-items:center;margin-right:18px}
+.v-del .ic svg{stroke:#fff}
+.v-del[hidden]{display:none}
+.v-bar{flex-wrap:wrap;padding:0 10px}
+.v-act{padding:0 14px}
+/* отметки на фото */
+.mk-box{position:fixed;inset:0;z-index:6500;background:#000;color:#fff;display:flex;flex-direction:column;font:15px system-ui,sans-serif}
+.mk-top{display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top,0px)) 12px 8px}
+.mk-title{flex:1;font-weight:650;font-size:17px}
+.mk-save{border:0;border-radius:12px;padding:10px 16px;background:#3b82f6;color:#fff;font:650 15px system-ui,sans-serif}
+.mk-cv{flex:1;width:100%;min-height:0;touch-action:none;display:block}
+.mk-row{display:flex;justify-content:space-around;gap:4px;padding:8px 6px;background:#15171c}
+.mk-row:last-child{padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
+.mk-row[hidden]{display:none}
+.mk-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;border:0;border-radius:12px;padding:8px 2px;background:transparent;color:#fff;font:500 12px system-ui,sans-serif}
+.mk-btn:active{background:rgba(255,255,255,.1)}
+.mk-btn[hidden]{display:none}
+.mk-btn .ic, .mk-btn .ic svg{width:24px;height:24px;stroke:#fff}
+.mk-dot{width:22px;height:22px;border-radius:50%;border:2px solid #fff;display:block}
+.mk-text{display:flex;gap:8px;align-items:center;padding:8px 10px;background:#15171c}
+.mk-text[hidden]{display:none}
+.mk-text .field{flex:1;margin:0}
 /* окно загрузки обновления */
 .upd-box{position:fixed;inset:0;z-index:5000;display:grid;place-items:center;background:rgba(0,0,0,.55)}
 .upd-card{width:min(300px,82vw);padding:22px 20px 18px;border-radius:20px;background:#1c1f26;color:#fff;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.5);font:15px system-ui,sans-serif}
@@ -282,6 +308,21 @@ T = [
     ('Ожидание адреса из интернета…', 'In attesa dell’indirizzo da internet…', 'Waiting for the address from the internet…'),
     ('Нет интернета — адрес не определить', 'Niente internet: indirizzo non disponibile', 'No internet — the address is unavailable'),
     ('Снять', 'Scatta', 'Take photo'),
+    ('Отметить', 'Segna', 'Mark'),
+    ('Удалить фото', 'Elimina foto', 'Delete photo'),
+    ('Удалить это фото?', 'Eliminare questa foto?', 'Delete this photo?'),
+    ('Фото удалено', 'Foto eliminata', 'Photo deleted'),
+    ('Фото ещё не загрузилось', 'La foto non è ancora caricata', 'The photo has not loaded yet'),
+    ('Отметки на фото', 'Segni sulla foto', 'Marks on the photo'),
+    ('Надпись', 'Scritta', 'Text'),
+    ('Стрелка', 'Freccia', 'Arrow'),
+    ('Круг', 'Cerchio', 'Circle'),
+    ('Цвет', 'Colore', 'Colour'),
+    ('Меньше', 'Più piccolo', 'Smaller'),
+    ('Больше', 'Più grande', 'Bigger'),
+    ('Повернуть', 'Ruota', 'Rotate'),
+    ('Текст', 'Testo', 'Text'),
+    ('Убрать', 'Togli', 'Remove'),
     ('Включить камеру', 'Accendi la fotocamera', 'Turn on the camera'),
     ('Камера ещё не готова', 'La fotocamera non è ancora pronta', 'The camera is not ready yet'),
     ('Нет доступа к камере', 'Nessun accesso alla fotocamera', 'No access to the camera'),
@@ -716,6 +757,19 @@ rep("""    const g = new Map();
     S.lines.forEach((l) => { if (!inViewFolder(l.folderId)) return; (l.layers || []).forEach((ly) => {""",
     """    const g = new Map(), st = statFolders();
     S.lines.forEach((l) => { if (!inStat(l.folderId, st)) return; (l.layers || []).forEach((ly) => {""")
+
+# ---------------------------------------------------------------- просмотр фото: «Отметить» и «Удалить» (MARK в app_part.js)
+rep("""    h('button', { type: 'button', id: 'vWhere', class: 'v-act', onclick: photoWhere }, ico('target'), h('span', { text: 'Где снято' }))));""",
+    """    h('button', { type: 'button', id: 'vWhere', class: 'v-act', onclick: photoWhere }, ico('target'), h('span', { text: 'Где снято' })),
+    h('button', { type: 'button', id: 'vMark', class: 'v-act', onclick: () => markViewerPhoto() }, ico('pencil'), h('span', { text: 'Отметить' }))));
+$('viewer').querySelector('.v-top').insertBefore(h('button', { type: 'button', id: 'vDel', class: 'v-del', 'aria-label': 'Удалить фото', onclick: () => deleteViewerPhoto() }, ico('trash')), $('vClose'));""")
+rep("""    const w = $('vWhere');
+    if (w) w.hidden = !(viewer.owner && isShot(p) && typeof p.lat === 'number');""",
+    """    const w = $('vWhere');
+    if (w) w.hidden = !(viewer.owner && isShot(p) && typeof p.lat === 'number');
+    const can = !!(viewer.owner && canEditIn(viewer.owner.folderId));
+    if ($('vMark')) $('vMark').hidden = !can;
+    if ($('vDel')) $('vDel').hidden = !can;""")
 
 # ---------------------------------------------------------------- PDF: «Поделиться» и «Сохранить» через AndroidBridge
 rep("""    const blob = new Blob([pdf], { type: 'application/pdf' });

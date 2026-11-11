@@ -372,6 +372,7 @@
   // ---------- кнопка «Назад» Android (MainActivity.onBackPressed): true — страница закрыла что-то сама ----------
   window.__onBack = () => {
     if (CAM.isOpen) { CAM.close(); return true; }
+    if (MARK.isOpen) { MARK.close(); return true; }
     if (!$('viewer').classList.contains('hidden')) { closeViewer(); return true; }
     if ($('schemaActs')) { closeSchemaActs(); return true; }
     if (!$('sheet').classList.contains('hidden')) { closeSheet(); return true; }
@@ -659,6 +660,229 @@
     }
     return { ok, open, close, get isOpen() { return !!el; } };
   })();
+
+  // ---------- фото: удалить одним нажатием и отметки на фото (стрелка, круг, надпись) ----------
+  // Отметки двигаются пальцем; размер и поворот — двумя пальцами или кнопками. Сохранение — новая картинка
+  // (новый id фото, старая уходит из списка), место и время съёмки остаются прежними.
+  const MARK = (() => {
+    const COLORS = ['#e3000f', '#facc15', '#ffffff', '#22c55e'];
+    let el = null, cv = null, img = null, items = [], sel = null, done = null, fit = null, color = COLORS[0];
+    const ptrs = new Map();
+    let drag = null, pinch = null, lastTap = 0;
+    const base = () => Math.max(img.naturalWidth, img.naturalHeight);
+    // стрелка как на образце: прямоугольный хвост и треугольный наконечник, без обводки
+    const ARROW = [[-0.5, -0.12], [0.12, -0.12], [0.12, -0.26], [0.5, 0], [0.12, 0.26], [0.12, 0.12], [-0.5, 0.12]];
+    function drawItem(g, it, k, selected) {
+      g.save();
+      g.translate(it.x * k, it.y * k); g.rotate(it.rot); g.scale(it.s * k, it.s * k);
+      const B = base();
+      if (it.type === 'arrow') {
+        const L = B * 0.28;
+        g.beginPath(); ARROW.forEach(([x, y], i) => (i ? g.lineTo(x * L, y * L) : g.moveTo(x * L, y * L))); g.closePath();
+        g.fillStyle = it.color; g.fill();
+      } else if (it.type === 'circle') {
+        const R = B * 0.1;
+        g.beginPath(); g.arc(0, 0, R, 0, Math.PI * 2);
+        g.lineWidth = R * 0.14; g.strokeStyle = it.color; g.stroke();
+      } else {
+        const F = B * 0.055;
+        g.font = `700 ${F}px system-ui, -apple-system, Roboto, sans-serif`;
+        g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+        g.lineWidth = F * 0.16; g.strokeStyle = it.color === '#ffffff' ? '#000' : '#fff';
+        g.strokeText(it.text, 0, 0); g.fillStyle = it.color; g.fillText(it.text, 0, 0);
+      }
+      if (selected) {
+        const b = box(it);
+        g.setLineDash([B * 0.012, B * 0.012]); g.lineWidth = B * 0.004 / it.s; g.strokeStyle = '#3b82f6';
+        g.strokeRect(-b.w / 2, -b.h / 2, b.w, b.h);
+      }
+      g.restore();
+    }
+    // размер отметки без поворота и масштаба (в точках фото)
+    function box(it) {
+      const B = base();
+      if (it.type === 'arrow') return { w: B * 0.3, h: B * 0.16 };
+      if (it.type === 'circle') return { w: B * 0.23, h: B * 0.23 };
+      const g = cv.getContext('2d'), F = B * 0.055;
+      g.font = `700 ${F}px system-ui, -apple-system, Roboto, sans-serif`;
+      return { w: g.measureText(it.text).width + F * 0.6, h: F * 1.4 };
+    }
+    function paint() {
+      if (!el) return;
+      const g = cv.getContext('2d'), W = cv.width, H = cv.height;
+      const k = Math.min(W / img.naturalWidth, H / img.naturalHeight);
+      fit = { k, ox: (W - img.naturalWidth * k) / 2, oy: (H - img.naturalHeight * k) / 2 };
+      g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+      g.translate(fit.ox, fit.oy);
+      g.drawImage(img, 0, 0, img.naturalWidth * k, img.naturalHeight * k);
+      items.forEach((it) => drawItem(g, it, k, it === sel));
+      $('mkSel').hidden = !sel;
+      $('mkEditText').hidden = !(sel && sel.type === 'text');
+    }
+    function resize() {
+      if (!el) return;
+      const r = cv.getBoundingClientRect(), d = Math.min(2, window.devicePixelRatio || 1);
+      cv.width = Math.round(r.width * d); cv.height = Math.round(r.height * d); cv.dataset.d = d;
+      paint();
+    }
+    // точка пальца → точка на фото
+    function toImg(e) {
+      const r = cv.getBoundingClientRect(), d = Number(cv.dataset.d) || 1;
+      return [((e.clientX - r.left) * d - fit.ox) / fit.k, ((e.clientY - r.top) * d - fit.oy) / fit.k];
+    }
+    function hit(p) {
+      for (let i = items.length - 1; i >= 0; i--) {
+        const it = items[i], dx = p[0] - it.x, dy = p[1] - it.y, c = Math.cos(-it.rot), s = Math.sin(-it.rot);
+        const lx = (dx * c - dy * s) / it.s, ly = (dx * s + dy * c) / it.s, b = box(it);
+        if (Math.abs(lx) <= b.w / 2 + base() * 0.02 && Math.abs(ly) <= b.h / 2 + base() * 0.02) return it;
+      }
+      return null;
+    }
+    function add(type, text) {
+      const it = { type, x: img.naturalWidth / 2, y: img.naturalHeight / 2, s: 1, rot: 0, color, text: text || '' };
+      items.push(it); sel = it; paint();
+    }
+    function askText(cur, cb) {
+      const bar = $('mkText'), inp = $('mkTextIn');
+      bar.hidden = false; inp.value = cur || '';
+      setTimeout(() => inp.focus(), 50);
+      $('mkTextOk').onclick = () => { const v = inp.value.trim(); bar.hidden = true; inp.blur(); if (v) cb(v); };
+      $('mkTextNo').onclick = () => { bar.hidden = true; inp.blur(); };
+    }
+    function down(e) {
+      e.preventDefault();
+      cv.setPointerCapture && cv.setPointerCapture(e.pointerId);
+      ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (ptrs.size === 1) {
+        const p = toImg(e), it = hit(p);
+        const now = Date.now();
+        if (it && it === sel && it.type === 'text' && now - lastTap < 350) askText(it.text, (v) => { it.text = v; paint(); });
+        lastTap = now;
+        sel = it || null;
+        drag = it ? { it, p0: p, x0: it.x, y0: it.y } : null;
+        pinch = null;
+        paint();
+      } else if (ptrs.size === 2 && sel) {
+        const [a, b] = [...ptrs.values()];
+        pinch = { it: sel, d0: Math.hypot(b.x - a.x, b.y - a.y), a0: Math.atan2(b.y - a.y, b.x - a.x), s0: sel.s, r0: sel.rot };
+        drag = null;
+      }
+    }
+    function move(e) {
+      if (!ptrs.has(e.pointerId)) return;
+      ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch && ptrs.size >= 2) {
+        const [a, b] = [...ptrs.values()];
+        pinch.it.s = Math.max(0.2, Math.min(6, pinch.s0 * Math.hypot(b.x - a.x, b.y - a.y) / Math.max(1, pinch.d0)));
+        pinch.it.rot = pinch.r0 + Math.atan2(b.y - a.y, b.x - a.x) - pinch.a0;
+        paint();
+      } else if (drag) {
+        const p = toImg(e);
+        drag.it.x = drag.x0 + p[0] - drag.p0[0]; drag.it.y = drag.y0 + p[1] - drag.p0[1];
+        paint();
+      }
+    }
+    function up(e) { ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null; if (!ptrs.size) drag = null; }
+    function btn(icon, text, fn, id) {
+      return h('button', { type: 'button', class: 'mk-btn', id: id || null, onclick: fn }, icon, h('span', { text }));
+    }
+    function open(src, onSave) {
+      close();
+      done = onSave; items = []; sel = null; color = COLORS[0];
+      img = new Image();
+      img.onload = () => { if (el) resize(); };
+      img.src = src;
+      const svgI = (d) => { const s = document.createElement('span'); s.className = 'ic'; s.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`; return s; };
+      el = h('div', { id: 'mkBox', class: 'mk-box' },
+        h('div', { class: 'mk-top' },
+          h('button', { type: 'button', class: 'cam-x', 'aria-label': 'Отмена', onclick: close }, ico('x')),
+          h('div', { class: 'mk-title', text: 'Отметки на фото' }),
+          h('button', { type: 'button', class: 'mk-save', text: 'Сохранить', onclick: save })),
+        h('canvas', { id: 'mkCanvas', class: 'mk-cv' }),
+        h('div', { id: 'mkText', class: 'mk-text', hidden: true },
+          h('input', { id: 'mkTextIn', class: 'field', type: 'text', maxlength: '60', placeholder: 'Надпись' }),
+          h('button', { type: 'button', id: 'mkTextOk', class: 'mk-save', text: 'OK' }),
+          h('button', { type: 'button', id: 'mkTextNo', class: 'cam-x', 'aria-label': 'Отмена' }, ico('x'))),
+        h('div', { id: 'mkSel', class: 'mk-row', hidden: true },
+          btn(svgI('<path d="M5 12h14"/>'), 'Меньше', () => { if (sel) { sel.s = Math.max(0.2, sel.s / 1.2); paint(); } }),
+          btn(svgI('<path d="M12 5v14M5 12h14"/>'), 'Больше', () => { if (sel) { sel.s = Math.min(6, sel.s * 1.2); paint(); } }),
+          btn(svgI('<path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"/>'), 'Повернуть', () => { if (sel) { sel.rot += Math.PI / 12; paint(); } }),
+          btn(svgI('<path d="M4 20l4-1 11-11-3-3L5 16z"/>'), 'Текст', () => { if (sel && sel.type === 'text') askText(sel.text, (v) => { sel.text = v; paint(); }); }, 'mkEditText'),
+          btn(ico('trash'), 'Убрать', () => { if (sel) { items = items.filter((x) => x !== sel); sel = null; paint(); } })),
+        h('div', { class: 'mk-row' },
+          btn(svgI('<path d="M3 10h11V6l7 6-7 6v-4H3z" fill="currentColor" stroke="none"/>'), 'Стрелка', () => add('arrow')),
+          btn(svgI('<circle cx="12" cy="12" r="8"/>'), 'Круг', () => add('circle')),
+          btn(svgI('<path d="M5 6V4h14v2M12 4v16M9 20h6"/>'), 'Надпись', () => askText('', (v) => add('text', v))),
+          h('button', { type: 'button', id: 'mkColor', class: 'mk-btn', onclick: () => {
+            color = COLORS[(COLORS.indexOf(color) + 1) % COLORS.length];
+            $('mkColor').querySelector('i').style.background = color;
+            if (sel) { sel.color = color; paint(); }
+          } }, h('i', { class: 'mk-dot', style: `background:${color}` }), h('span', { text: 'Цвет' }))));
+      document.body.appendChild(el);
+      cv = $('mkCanvas');
+      cv.addEventListener('pointerdown', down);
+      cv.addEventListener('pointermove', move);
+      ['pointerup', 'pointercancel'].forEach((t) => cv.addEventListener(t, up));
+      window.addEventListener('resize', resize);
+      if (img.complete && img.naturalWidth) resize();
+    }
+    function close() {
+      window.removeEventListener('resize', resize);
+      ptrs.clear(); drag = null; pinch = null;
+      if (el) { el.remove(); el = null; }
+    }
+    async function save() {
+      if (!items.length) { close(); return; }
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      const g = c.getContext('2d');
+      g.drawImage(img, 0, 0);
+      items.forEach((it) => drawItem(g, it, 1, false));
+      const src = c.toDataURL('image/jpeg', 0.88), cb = done;
+      close();
+      if (cb) await cb(src);
+    }
+    return { open, close, get isOpen() { return !!el; } };
+  })();
+  // отметки на текущем фото просмотра: новая картинка (новый id) на месте старой в списке фото маркера или линии
+  async function markViewerPhoto() {
+    const it = viewer.owner, p = viewer.list[viewer.i];
+    if (!it || !p) return;
+    if (!canEditIn(it.folderId)) { noRights(); return; }
+    const src = await photoSrc(p);
+    if (!src) { toast('Фото ещё не загрузилось'); return; }
+    MARK.open(src, async (out) => {
+      const id = uid();
+      if (!(await PhotoStore.put(id, out))) { toast('Не удалось сохранить фото'); return; }
+      const np = isShot(p) ? Object.assign({}, p, { id }) : 'photo:' + id;
+      if (isShot(np)) delete np.src;
+      const arr = it.photos || [];
+      const i = arr.indexOf(p);
+      if (i < 0) { toast('Не удалось сохранить фото'); return; }
+      arr[i] = np;
+      if (viewer.list !== arr) viewer.list[viewer.i] = np;
+      commit();
+      renderViewer();
+      toast('Фото сохранено');
+    });
+  }
+  // удалить текущее фото просмотра (с подтверждением)
+  function deleteViewerPhoto() {
+    const it = viewer.owner, p = viewer.list[viewer.i];
+    if (!it || !p) return;
+    if (!canEditIn(it.folderId)) { noRights(); return; }
+    confirmSheet('Удалить это фото?', 'Удалить', () => {
+      const arr = it.photos || [];
+      const i = arr.indexOf(p);
+      if (i >= 0) arr.splice(i, 1);
+      if (viewer.list !== arr) { const j = viewer.list.indexOf(p); if (j >= 0) viewer.list.splice(j, 1); }
+      commit();
+      if (!viewer.list.length) { closeViewer(); toast('Фото удалено'); if (it.lat != null) showMarkerSheet(it); return; }
+      viewer.i = Math.min(viewer.i, viewer.list.length - 1);
+      renderViewer();
+      toast('Фото удалено');
+    });
+  }
 
   // ---------- значок «отправлено»: видно, ушла ли работа на общую карту ----------
   const SYNC_MARK = { ok: 'M9.3 13.6l1.9 1.9 3.6-4', pend: 'M12 16.2v-5.4M9.7 13l2.3-2.4 2.3 2.4', off: 'M10 11.6l4 4M14 11.6l-4 4', wait: '' };
